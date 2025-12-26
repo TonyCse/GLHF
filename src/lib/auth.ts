@@ -1,11 +1,10 @@
-import type { AuthOptions } from "next-auth";
+import NextAuth from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import { compare } from "bcryptjs";
 import type { Role } from "@prisma/client";
-import NextAuth from "next-auth";
 
-export const authOptions: AuthOptions = {
+export const { auth, signIn, signOut, handlers } = NextAuth({
   pages: { signIn: "/signin" },
   session: { strategy: "jwt" },
   secret: process.env.NEXTAUTH_SECRET,
@@ -76,8 +75,4 @@ export const authOptions: AuthOptions = {
       return session;
     },
   },
-};
-
-const handler = NextAuth(authOptions);
-
-export const { auth, signIn, signOut } = handler;
+});
