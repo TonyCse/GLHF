@@ -4,9 +4,10 @@ import { auth } from "@/lib/auth";
 
 export async function GET(
   req: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
-  const id = parseInt(context.params.id, 10);
+  const params = await context.params;
+  const id = parseInt(params.id, 10);
 
   if (isNaN(id)) {
     return NextResponse.json({ error: "ID invalide" }, { status: 400 });
@@ -75,7 +76,7 @@ export async function GET(
 
 export async function DELETE(
   req: Request,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
 
@@ -83,7 +84,8 @@ export async function DELETE(
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const id = parseInt(context.params.id, 10);
+  const params = await context.params;
+  const id = parseInt(params.id, 10);
 
   if (isNaN(id)) {
     return NextResponse.json({ error: "ID invalide" }, { status: 400 });

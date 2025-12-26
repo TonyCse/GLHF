@@ -30,11 +30,12 @@ const getBackgroundImage = (game: string) => {
   return map[game] || "/images/default.jpg";
 };
 
-export default async function Page({ params }: { params: { id: string } }) {
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   const userEmail = session?.user?.email;
 
-  const tournoiId = parseInt(params.id, 10);
+  const resolvedParams = await params;
+  const tournoiId = parseInt(resolvedParams.id, 10);
   if (isNaN(tournoiId)) return notFound();
 
   const tournoi = await prisma.tournament.findUnique({

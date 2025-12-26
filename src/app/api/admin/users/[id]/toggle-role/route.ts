@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
   if (!session || session.user.role !== "ADMIN") {
@@ -13,7 +13,8 @@ export async function POST(
     return NextResponse.redirect(back);
   }
 
-  const id = Number(params.id);
+  const resolvedParams = await params;
+  const id = Number(resolvedParams.id);
   if (!Number.isFinite(id)) {
     const back = new URL("/admin/users?err=bad_id", req.url);
     return NextResponse.redirect(back);

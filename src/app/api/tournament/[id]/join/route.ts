@@ -9,7 +9,7 @@ import {
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
 
@@ -17,7 +17,8 @@ export async function POST(
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
-  const tournoiId = parseInt(params.id, 10);
+  const resolvedParams = await params;
+  const tournoiId = parseInt(resolvedParams.id, 10);
   if (isNaN(tournoiId)) {
     return NextResponse.json({ error: "ID invalide" }, { status: 400 });
   }
