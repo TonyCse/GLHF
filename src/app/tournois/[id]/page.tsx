@@ -3,8 +3,7 @@ import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import TournamentJoiner from "@/components/TournamentJoiner";
 import TournamentBracket from "@/components/TournamentBracket";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import DeleteTournamentButton from "@/components/DeleteTournamentButton";
 import LeaveTournamentButton from "@/components/LeaveTournamentButton";
 import TournamentTokensWidget from "@/components/TournamentTokensWidget";
@@ -32,7 +31,7 @@ const getBackgroundImage = (game: string) => {
 };
 
 export default async function Page({ params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const userEmail = session?.user?.email;
 
   const tournoiId = parseInt(params.id, 10);

@@ -1,11 +1,10 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import PlanCard from "./PlanCard";
 import TokensDisplay from "./TokensDisplay";
 
 export default async function PlanPage() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   
   // Récupérer les plans disponibles
   const plans = await prisma.plan.findMany({

@@ -1,14 +1,13 @@
 // src/app/api/admin/users/[id]/toggle-delete/route.ts
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session || session.user.role !== "ADMIN") {
     return NextResponse.redirect(new URL("/admin/users?err=forbidden", req.url));
   }

@@ -1,8 +1,7 @@
 // src/app/abonnements/success/page.tsx
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 
 const PAYPAL_BASE_URL = process.env.PAYPAL_BASE_URL!;
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID!;
@@ -33,7 +32,7 @@ type Props = {
 };
 
 export default async function SuccessPage({ searchParams }: Props) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user?.id) {
     redirect("/signin");
   }

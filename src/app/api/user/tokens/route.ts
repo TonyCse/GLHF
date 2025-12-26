@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { refreshUserTokensIfNeeded, getRemainingTokens } from "@/lib/tokens";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
@@ -52,7 +51,7 @@ export async function GET() {
 
 // API pour forcer le reset mensuel (admin uniquement)
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   
   if (!session?.user || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });

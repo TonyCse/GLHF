@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Role, Game } from "@prisma/client";
@@ -10,7 +9,7 @@ import BarChart from "@/components/BarChart";
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboard() {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session || session.user.role !== "ADMIN") redirect("/");
 
   const [

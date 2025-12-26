@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 import Link from "next/link";
 import ParticipantManager from "./ParticipantManager";
 import DeleteTournamentForm from "./DeleteTournamentForm";
@@ -12,7 +11,7 @@ interface Props {
 }
 
 export default async function AdminTournamentDetail({ params }: Props) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   const { id } = await params;
 
   if (!session || session.user.role !== "ADMIN") {

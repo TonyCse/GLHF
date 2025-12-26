@@ -1,8 +1,7 @@
 // src/app/api/paypal/create-subscription/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { auth } from "@/lib/auth";
 
 const PAYPAL_BASE_URL = process.env.PAYPAL_BASE_URL;
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
@@ -45,7 +44,7 @@ async function getAccessToken() {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.redirect("/signin");
   }

@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import { compare } from "bcryptjs";
 import type { Role } from "@prisma/client";
+import NextAuth from "next-auth";
 
 export const authOptions: AuthOptions = {
   pages: { signIn: "/signin" },
@@ -76,3 +77,7 @@ export const authOptions: AuthOptions = {
     },
   },
 };
+
+const handler = NextAuth(authOptions);
+
+export const { auth, signIn, signOut } = handler;
