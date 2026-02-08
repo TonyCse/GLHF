@@ -16,71 +16,64 @@ import {
 import { useEffect, useState } from "react";
 import Image from "next/image";
 
+const LINK_CLASS =
+  "flex items-center text-xl text-white hover:text-[#8F60D0] transition-all duration-300 hover:scale-105";
+
 export default function Navbar() {
   const { data: session, status } = useSession();
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   const [planName, setPlanName] = useState<string | null>(null);
-  const [isScrolled, setIsScrolled] = useState<boolean>(false);
 
   // Helper pour éviter les soucis de types côté client
-  const isAdmin = session?.user?.role === "ADMIN";
+  const isAdmin =
+    session?.user?.role === "ADMIN" || session?.user?.role === "SUPER_ADMIN";
 
   useEffect(() => {
+    let isActive = true;
     const fetchUser = async () => {
       if (!session?.user?.email) return;
       try {
         const res = await fetch(`/api/user?email=${session.user.email}`);
-        if (!res.ok) return;
+        if (!res.ok || !isActive) return;
         const data = await res.json();
+        if (!isActive) return;
         if (data?.avatarUrl) setAvatarUrl(data.avatarUrl.replace("/svg?", "/png?"));
         if (data?.plan?.name) setPlanName(data.plan.name);
       } catch (err) {
-        console.error("Erreur de récupération de l'utilisateur :", err);
+        if (isActive) {
+          console.error("Erreur de r?cup?ration de l'utilisateur :", err);
+        }
       }
     };
     fetchUser();
+
+    return () => {
+      isActive = false;
+    };
   }, [session]);
 
-  useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
   if (status === "loading") return null;
-
-  const linkClass =
-    "flex items-center text-xl text-white hover:text-[#8F60D0] transition-all duration-300 hover:scale-105";
 
   return (
     <nav className="fixed top-0 w-full z-50">
       <div
-        className={`
+        className="
         py-4 px-6 transition-all duration-500 ease-in-out
-        ${
-          isScrolled
-            ? "bg-black/60 md:bg-black/20 backdrop-blur-lg border-b border-white/10 shadow-2xl"
-            : "bg-[#1c1d1f] shadow-lg"
-        }
-      `}
+        bg-[#1c1d1f] shadow-lg
+      "
       >
-        {isScrolled && (
-          <>
-            <div className="absolute inset-0 bg-[#1c1d1f]/80 md:bg-transparent pointer-events-none" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#8F60D0]/10 via-transparent to-[#A855F7]/10 pointer-events-none" />
-          </>
-        )}
 
         <div className="flex justify-between items-center max-w-7xl mx-auto relative text-[#8F60D0]">
           {/* Logo */}
           <Link
             href="/"
             className="flex items-center space-x-3 group hover:scale-105 transition-all duration-300"
+            aria-label="Retour a l'accueil"
           >
             <div className="relative">
               <Image
-                src="/images/logo.png"
+                src="/images/logo.webp"
                 alt="GLHF Logo"
                 width={80}
                 height={80}
@@ -92,36 +85,36 @@ export default function Navbar() {
 
           {/* Menu desktop */}
           {session?.user && (
-            <div className="hidden md:flex space-x-8">
-              <Link href="/" className={linkClass}>
+            <div className="hidden min-[800px]:flex space-x-8">
+              <Link href="/" className={LINK_CLASS}>
                 <Home className="mr-2" size={24} />
                 <span className="relative">
                   Accueil
                   <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-[#8F60D0] to-[#A855F7] transition-all duration-300 group-hover:w-full"></span>
                 </span>
               </Link>
-              <Link href="/tournois" className={linkClass}>
+              <Link href="/tournois" className={LINK_CLASS}>
                 <List className="mr-2" size={24} />
                 <span className="relative">
                   Tournois
                   <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-[#8F60D0] to-[#A855F7] transition-all duration-300 group-hover:w-full"></span>
                 </span>
               </Link>
-              <Link href="/plan" className={linkClass}>
+              <Link href="/abonnements" className={LINK_CLASS}>
                 <CreditCard className="mr-2" size={24} />
                 <span className="relative">
                   Forfaits
                   <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-[#8F60D0] to-[#A855F7] transition-all duration-300 group-hover:w-full"></span>
                 </span>
               </Link>
-              <Link href="/create" className={linkClass}>
+              <Link href="/create" className={LINK_CLASS}>
                 <PlusCircle className="mr-2" size={24} />
                 <span className="relative">
                   Créer
                   <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-[#8F60D0] to-[#A855F7] transition-all duration-300 group-hover:w-full"></span>
                 </span>
               </Link>
-              <Link href="/ranking" className={linkClass}>
+              <Link href="/ranking" className={LINK_CLASS}>
                 <Trophy className="mr-2" size={24} />
                 <span className="relative">
                   Classement
@@ -131,7 +124,7 @@ export default function Navbar() {
 
               {/* Lien ADMIN (desktop) */}
               {isAdmin && (
-                <Link href="/admin" className={linkClass}>
+                <Link href="/admin" className={LINK_CLASS}>
                   <span className="relative">
                     Admin
                     <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-[#8F60D0] to-[#A855F7] transition-all duration-300 group-hover:w-full"></span>
@@ -142,7 +135,7 @@ export default function Navbar() {
           )}
 
           {/* Profil / Connexion desktop */}
-          <div className="hidden md:flex items-center space-x-4">
+          <div className="hidden min-[800px]:flex items-center space-x-4">
             {session?.user ? (
               <>
                 <Link
@@ -169,6 +162,8 @@ export default function Navbar() {
                 <button
                   onClick={() => signOut({ callbackUrl: "/" })}
                   className="p-2 hover:text-[#8F60D0] transition-all duration-300 hover:scale-110 hover:bg-white/10 rounded-lg backdrop-blur-sm cursor-pointer"
+                  aria-label="Se deconnecter"
+                  title="Se deconnecter"
                 >
                   <LogOut size={24} />
                 </button>
@@ -185,8 +180,11 @@ export default function Navbar() {
 
           {/* Menu mobile toggle */}
           <button
-            className="md:hidden text-white z-50 relative p-2 hover:bg-white/10 rounded-lg transition-all duration-300"
+            className="min-[800px]:hidden text-white z-50 relative p-2 hover:bg-white/10 rounded-lg transition-all duration-300"
             onClick={() => setIsOpen(!isOpen)}
+            aria-label={isOpen ? "Fermer le menu" : "Ouvrir le menu"}
+            aria-expanded={isOpen}
+            aria-controls="mobile-menu"
           >
             {isOpen ? <X size={28} /> : <Menu size={28} />}
           </button>
@@ -195,48 +193,43 @@ export default function Navbar() {
 
       {/* Menu mobile */}
       <div
+        id="mobile-menu"
         className={`fixed top-0 right-0 h-full w-72 text-white z-[60] transform transition-all duration-500 ease-in-out shadow-2xl border-l border-white/20 ${
           isOpen ? "translate-x-0" : "translate-x-full"
-        } ${isScrolled ? "bg-black/60 backdrop-blur-lg" : "bg-[#1c1d1f]"}`}
+        } bg-[#1c1d1f]`}
       >
-        {isScrolled && (
-          <>
-            <div className="absolute inset-0 bg-[#1c1d1f]/80 pointer-events-none" />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#8F60D0]/10 via-transparent to-[#A855F7]/10 pointer-events-none" />
-          </>
-        )}
         <div className="absolute inset-0 bg-gradient-to-b from-[#8F60D0]/20 via-transparent to-[#A855F7]/20 pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent pointer-events-none" />
 
         <div className="p-6 flex flex-col space-y-6 pt-20 relative">
           {session?.user && (
             <>
-              <Link href="/" className={`${linkClass} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
+              <Link href="/" className={`${LINK_CLASS} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
                 <Home className="mr-3" size={24} /> Accueil
               </Link>
-              <Link href="/tournois" className={`${linkClass} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
+              <Link href="/tournois" className={`${LINK_CLASS} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
                 <List className="mr-3" size={24} /> Tournois
               </Link>
-              <Link href="/create" className={`${linkClass} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
+              <Link href="/create" className={`${LINK_CLASS} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
                 <PlusCircle className="mr-3" size={24} /> Créer
               </Link>
-              <Link href="/ranking" className={`${linkClass} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
+              <Link href="/ranking" className={`${LINK_CLASS} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
                 <Trophy className="mr-3" size={24} /> Classement
               </Link>
-              <Link href="/plan" className={`${linkClass} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
+              <Link href="/abonnements" className={`${LINK_CLASS} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
                 <CreditCard className="mr-3" size={24} /> Forfaits
               </Link>
 
               {/* Lien ADMIN (mobile) */}
               {isAdmin && (
-                <Link href="/admin" className={`${linkClass} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
+                <Link href="/admin" className={`${LINK_CLASS} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
                   Admin
                 </Link>
               )}
 
               <div className="w-full h-px bg-gradient-to-r from-transparent via-white/20 to-transparent my-4"></div>
 
-              <Link href="/profil" className={`${linkClass} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
+              <Link href="/profil" className={`${LINK_CLASS} p-3 rounded-lg hover:bg-white/10 backdrop-blur-sm`} onClick={() => setIsOpen(false)}>
                 {avatarUrl && avatarUrl.trim() !== "" && (
                   <Image
                     src={avatarUrl}
@@ -253,7 +246,7 @@ export default function Navbar() {
                   setIsOpen(false);
                   signOut({ callbackUrl: "/" });
                 }}
-                className={`${linkClass} p-3 rounded-lg hover:bg-red-500/20 backdrop-blur-sm text-left w-full cursor-pointer`}
+                className={`${LINK_CLASS} p-3 rounded-lg hover:bg-red-500/20 backdrop-blur-sm text-left w-full cursor-pointer`}
               >
                 <LogOut className="mr-3" size={24} /> Déconnexion
               </button>
@@ -273,10 +266,11 @@ export default function Navbar() {
 
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[55] md:hidden"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[55] min-[800px]:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
     </nav>
   );
 }
+

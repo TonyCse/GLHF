@@ -1,6 +1,3 @@
-'use client'
-
-import { Github } from "lucide-react";
 import { FaDiscord } from "react-icons/fa";
 import Link from "next/link";
 
@@ -21,22 +18,22 @@ export default function Footer() {
           <Link href="/" className="hover:text-[#8F60D0] transition">Accueil</Link>
           <a href="/mentions" className="hover:text-[#8F60D0] transition">Mentions légales</a>
           <a href="/conditions" className="hover:text-[#8F60D0] transition">Conditions d&apos;utilisation</a>
-          <a href="/plan" className="hover:text-[#8F60D0] transition">Plan du site</a>
+          <Link href="/plan-du-site" className="hover:text-[#8F60D0] transition">Plan du site</Link>
           <a href="/contact" className="hover:text-[#8F60D0] transition">Contact</a>
         </nav>
 
         {/* Réseaux sociaux */}
         <div className="flex justify-center space-x-4">
-          <a href="#" className="hover:text-[#8F60D0] transition">
-            <Github size={30} className="text-[#8F60D0]" />
-          </a>
           <a
-            href="https://discord.gg/pSrqCpSu"
+            href="https://discord.gg/a3Qxf55B"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-[#8F60D0] transition"
+            aria-label="Discord"
+            title="Discord"
           >
-            <FaDiscord size={30} className="text-[#8F60D0]" />
+            <FaDiscord size={30} className="text-[#8F60D0]" aria-hidden="true" />
+            <span className="sr-only">Discord</span>
           </a>
         </div>
 

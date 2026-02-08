@@ -1,24 +1,18 @@
-'use client';
-
 import Image from "next/image";
+import Link from "next/link";
 import { Users, Clock, Trophy } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
-import Button from "@/components/Button";
+import { auth } from "@/lib/auth";
 
-export default function Home() {
-    const router = useRouter();
-  const { data: session } = useSession();
+export default async function Home() {
+  const session = await auth();
+  const isAuthed = Boolean(session?.user);
+  const getGameHref = (game: string) =>
+    isAuthed ? `/tournois?game=${game}` : "/signin";
+  const primaryCtaHref = isAuthed ? "/tournois" : "/signup";
+  const linkButtonClass =
+    "relative inline-flex items-center justify-center px-10 py-5 overflow-hidden font-bold text-white rounded-xl bg-gradient-to-r from-[#8F60D0] to-[#A855F7] shadow-lg transition-all duration-300 group";
 
-  const handleCardClick = (game) => {
-    if (session) {
-     router.push(`/tournois?game=${game}`);
-    } else {
-      router.push("/signin");
-    }
-  };
-  
-    return (
+  return (
         <div className="bg-[#232426] text-white flex flex-col items-center justify-center">
           {/* Hero Section */}
           <div className="relative w-full min-h-screen flex items-center justify-center overflow-hidden">
@@ -204,7 +198,7 @@ export default function Home() {
                   Bienvenue sur <span className="text-[#A855F7]">GLHF</span>
                 </h1>
                 <Image 
-                  src="/images/logo.png" 
+                  src="/images/logo.webp" 
                   alt="glhf-logo"
                   width={300}
                   height={300}
@@ -227,9 +221,12 @@ export default function Home() {
               {/* Enhanced CTA Button */}
               <div className="relative">
             
-                <Button onClick={() => router.push(session ? "/tournois" : "/signup")}>
-                   Entre dans l&apos;arène
-                </Button>
+                <Link href={primaryCtaHref} className={linkButtonClass + " text-2xl"}>
+                  <span className="absolute top-0 left-0 w-1/3 h-full bg-white/20 blur-lg rotate-[20deg] -translate-x-full group-hover:translate-x-[220%] transition-transform duration-500"></span>
+                  <span className="relative z-10 flex items-center gap-2">
+                    Entre dans l&apos;arène
+                  </span>
+                </Link>
               </div>
             </div>
 
@@ -238,7 +235,7 @@ export default function Home() {
           </div>
           
           {/* Section Fonctionnalités */}
-          <div className="w-full max-w-7xl mx-auto px-4 sm:w-[90%] text-center mb-20">
+          <div className="content-auto w-full max-w-7xl mx-auto px-4 sm:w-[90%] text-center mb-20">
             <div className="mb-16">
               <h2 className="text-4xl md:text-5xl font-bold mb-4 relative">
                 <span className="text-white">Pourquoi choisir </span>
@@ -268,7 +265,7 @@ export default function Home() {
           </div>
           
           {/* Section Témoignages */}
-          <div className="w-full max-w-7xl mx-auto text-center mb-20 px-4 sm:w-[90%]">
+          <div className="content-auto w-full max-w-7xl mx-auto text-center mb-20 px-4 sm:w-[90%]">
             <div className="mb-16">
               <h2 className="text-4xl md:text-5xl font-bold mb-4 relative">
                 Ce que disent nos utilisateurs
@@ -308,8 +305,8 @@ export default function Home() {
           </div>
 
           {/* Section Catalogue des jeux */}
-          <div className="py-16">
-            <div className="container mx-auto text-center">
+          <div className="content-auto w-full max-w-7xl mx-auto text-center mb-20 px-4 sm:w-[90%] py-16">
+            <div>
                 <h2 className="text-4xl md:text-5xl font-bold mb-30 relative">
                   Découvrez notre catalogue de jeux
                 </h2>
@@ -319,30 +316,30 @@ export default function Home() {
                     game: "LEAGUE_OF_LEGENDS",
                     title: "League of Legends",
                     bg: "/images/lol_bg.webp",
-                    icon: "/images/lol_icon.png",
+                    icon: "/images/lol_icon.webp",
                     iconW: 400,
                     iconH: 100,
                   },
                   {
                     game: "VALORANT",
                     title: "Valorant",
-                    bg: "/images/valorant_bg.png",
-                    icon: "/images/valorant_icon.png",
+                    bg: "/images/valorant_bg.webp",
+                    icon: "/images/valorant_icon.webp",
                     iconW: 230,
                     iconH: 100,
                   },
                   {
                     game: "OVERWATCH",
                     title: "Overwatch",
-                    bg: "/images/ow_bg.jpg",
-                    icon: "/images/ow_logo.png",
+                    bg: "/images/ow_bg.webp",
+                    icon: "/images/ow_logo.webp",
                     iconW: 220,
                     iconH: 100,
                   },
                   {
                     game: "FALL_GUYS",
                     title: "Fall Guys",
-                    bg: "/images/fg_bg.jpg",
+                    bg: "/images/fg_bg.webp",
                     icon: "/images/fg_icon.webp",
                     iconW: 270,
                     iconH: 100,
@@ -350,7 +347,7 @@ export default function Home() {
                   {
                     game: "MARVELS_RIVALS",
                     title: "Marvel's Rival",
-                    bg: "/images/marvel_bg.jpg",
+                    bg: "/images/marvel_bg.webp",
                     icon: "/images/marvel_logo.webp",
                     iconW: 250,
                     iconH: 100,
@@ -358,16 +355,16 @@ export default function Home() {
                   {
                     game: "MINECRAFT",
                     title: "Minecraft",
-                    bg: "/images/minecraft_bg.jpg",
+                    bg: "/images/minecraft_bg.webp",
                     icon: "/images/minecraft_icon.webp",
                     iconW: 250,
                     iconH: 100,
                   },
                 ].map(({ game, title, bg, icon, iconW, iconH }) => (
-                  <div
+                  <Link
                     key={game}
-                    onClick={() => handleCardClick(game)}
-                    className="w-[90%] mx-auto h-50 md:w-xl group cursor-pointer relative bg-cover bg-no-repeat bg-top rounded-lg shadow-lg flex items-center after:content-[''] after:absolute after:inset-0 after:bg-[#272727] after:opacity-60 after:rounded-lg"
+                    href={getGameHref(game)}
+                    className="w-full h-50 group cursor-pointer relative bg-cover bg-no-repeat bg-top rounded-lg shadow-lg flex items-center after:content-[''] after:absolute after:inset-0 after:bg-[#272727] after:opacity-60 after:rounded-lg"
                     style={{ backgroundImage: `url('${bg}')` }}
                   >
                     <h3 className="z-10 text-3xl font-semibold text-white ml-[10px] mb-[10px] my-auto md:ml-18 transition-all duration-300 transform group-hover:scale-80">
@@ -380,15 +377,15 @@ export default function Home() {
                       alt={`${title} Icon`}
                       className="z-1 absolute right-0 bottom-0 p-0 bg-no-repeat bg-contain transition-all duration-300 transform group-hover:scale-105 origin-bottom-right"
                     />
-                  </div>
+                  </Link>
                   ))}
                 </div>
               </div>
             </div>
 
             
-            {/* Section Démonstration Produit */}
-            <div className="w-full max-w-7xl mx-auto text-center mb-20 px-4 sm:w-[90%]">
+            {/* Section Démonstration Produit
+            <div className="content-auto w-full max-w-7xl mx-auto text-center mb-20 px-4 sm:w-[90%]">
                 <div className="mb-16">
                     <h2 className="text-4xl md:text-5xl font-bold mb-4 relative">
                       Découvrez notre plateforme
@@ -401,10 +398,10 @@ export default function Home() {
                     <source src=" " type="video/mp4" />
                     Votre navigateur ne supporte pas la lecture de vidéos.
                 </video>
-            </div>
+            </div> */}
             
             {/* Section Statistiques */}
-            <div className="w-full max-w-7xl mx-auto text-center mb-20 sm:w-[90%]">
+            <div className="content-auto w-full max-w-7xl mx-auto text-center mb-20 px-4 sm:w-[90%]">
                 <div className="mb-16">
                     <h2 className="text-4xl md:text-5xl font-bold mb-4 relative">
                       Nos statistiques
@@ -417,7 +414,7 @@ export default function Home() {
                     {[
                         { icon: <Trophy size={56} className="text-yellow-400" />, title: "Tournois organisés", value: "150+", gradient: "from-yellow-400 to-orange-500" },
                         { icon: <Users size={56} className="text-blue-400" />, title: "Joueurs inscrits", value: "10,000+", gradient: "from-blue-400 to-purple-500" },
-                        { icon: <Clock size={56} className="text-green-400" />, title: "Heures de jeu", value: "500,000+", gradient: "from-green-400 to-teal-500" },
+                        { icon: <Clock size={56} className="text-green-400" />, title: "Participations tournois", value: "3,500+", gradient: "from-green-400 to-teal-500" },
                     ].map((stat, index) => (
                         <div key={index} className="bg-gradient-to-br from-[#1c1d1f] to-[#2a2b2f] p-8 rounded-xl shadow-xl text-center flex flex-col items-center transition-all duration-300 transform hover:-translate-y-3 hover:shadow-2xl border border-[#8F60D0]/20 hover:border-[#8F60D0]/40">
                             <div className="mb-6">{stat.icon}</div>
@@ -431,7 +428,7 @@ export default function Home() {
             </div>
 
             {/* Section FAQ */}
-            <div className="w-full max-w-7xl mx-auto text-center mb-20 sm:w-[90%]">
+            <div className="content-auto w-full max-w-7xl mx-auto text-center mb-20 px-4 sm:w-[90%]">
               <div className="text-center mb-16">
                 <h2 className="text-4xl md:text-5xl font-bold mb-4 relative">
                   FAQ • Questions fréquentes
@@ -479,7 +476,7 @@ export default function Home() {
 
           
           {/* Call to Action Final */}
-          <div className="w-full max-w-7xl mx-auto sm:w-[90%] px-4 text-center mb-20 bg-gradient-to-br from-[#1c1d1f] to-[#2a2b2f] p-8 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-3 hover:shadow-2xl border border-[#8F60D0]/20 hover:border-[#8F60D0]/40">
+          <div className="content-auto w-full max-w-7xl mx-auto sm:w-[90%] px-4 text-center mb-20 bg-gradient-to-br from-[#1c1d1f] to-[#2a2b2f] p-8 rounded-xl shadow-xl transition-all duration-300 transform hover:-translate-y-3 hover:shadow-2xl border border-[#8F60D0]/20 hover:border-[#8F60D0]/40">
             <h2 className="text-3xl md:text-5xl font-bold mb-6 relative text-center">
               Prêt à rejoindre la compétition&nbsp;?
             </h2>
@@ -487,12 +484,18 @@ export default function Home() {
               Rejoignez des milliers de joueurs passionnés et commencez votre aventure esport dès aujourd&apos;hui !
             </p>
             <div className="space-y-4 md:space-y-0 md:space-x-6 md:flex md:justify-center">
-              <Button onClick={() => router.push("/signup")}>
-                S&apos;inscrire gratuitement
-              </Button>
-              <Button onClick={() => router.push("/tournois")}>
-                Voir les tournois
-              </Button>
+              <Link href="/signup" className={linkButtonClass + " text-2xl"}>
+                <span className="absolute top-0 left-0 w-1/3 h-full bg-white/20 blur-lg rotate-[20deg] -translate-x-full group-hover:translate-x-[220%] transition-transform duration-500"></span>
+                <span className="relative z-10 flex items-center gap-2">
+                  S&apos;inscrire gratuitement
+                </span>
+              </Link>
+              <Link href="/tournois" className={linkButtonClass + " text-2xl"}>
+                <span className="absolute top-0 left-0 w-1/3 h-full bg-white/20 blur-lg rotate-[20deg] -translate-x-full group-hover:translate-x-[220%] transition-transform duration-500"></span>
+                <span className="relative z-10 flex items-center gap-2">
+                  Voir les tournois
+                </span>
+              </Link>
             </div>
           </div>
         </div>

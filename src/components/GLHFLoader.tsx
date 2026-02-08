@@ -47,7 +47,7 @@ const GLHFLoader = ({ message = "Chargement en cours..." }) => {
           >
             {/* Votre logo */}
             <Image 
-              src="/images/logo.png"
+              src="/images/logo.webp"
               alt="GLHF Logo"
               width={128}
               height={128}

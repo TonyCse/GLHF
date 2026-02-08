@@ -1,87 +1,98 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Gamepad, Trophy, Medal, PlusCircle } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+
+export const dynamic = "force-dynamic";
 
 const getBackgroundImage = (game: string) => {
   const map: Record<string, string> = {
     LEAGUE_OF_LEGENDS: "/images/lol_bg.webp",
-    VALORANT: "/images/valorant_bg.png",
-    OVERWATCH: "/images/ow_bg.jpg",
-    FALL_GUYS: "/images/fg_bg.jpg",
-    MARVELS_RIVALS: "/images/marvel_bg.jpg",
-    MINECRAFT: "/images/minecraft_bg.jpg",
+    VALORANT: "/images/valorant_bg.webp",
+    OVERWATCH: "/images/ow_bg.webp",
+    FALL_GUYS: "/images/fg_bg.webp",
+    MARVELS_RIVALS: "/images/marvel_bg.webp",
+    MINECRAFT: "/images/minecraft_bg.webp",
   };
   return map[game] || "/images/default.jpg";
 };
 
-export default function PublicProfilePage() {
-  const { pseudo } = useParams();
-  const [user, setUser] = useState<{ id: number; pseudo: string; avatarUrl?: string; createdAt: string; joinedTournaments?: { id: number; name: string; game: string; date: string; imageUrl?: string; matches?: { round: number; matchIndex: number; winnerId?: number }[] }[]; createdTournaments?: { id: number }[]; ranking?: number; tournamentsWon?: number } | null>(null);
-  const [stats, setStats] = useState({
-    tournamentsPlayed: 0,
-    tournamentsWon: 0,
-    ranking: 0,
-    tournamentsCreated: 0,
+type TournamentMatch = {
+  round: number;
+  matchIndex: number;
+  winnerId?: number | null;
+};
+
+type TournamentItem = {
+  id: number;
+  name: string;
+  game: string;
+  date: Date;
+  imageUrl?: string | null;
+  matches?: TournamentMatch[] | null;
+};
+
+export default async function PublicProfilePage({
+  params,
+}: {
+  params: { pseudo: string };
+}) {
+  const { pseudo } = params;
+
+  const user = await prisma.user.findFirst({
+    where: {
+      pseudo,
+      isDeleted: false,
+    },
+    include: {
+      tournamentParticipations: {
+        where: { isActive: true },
+        include: {
+          tournament: {
+            include: { matches: true },
+          },
+        },
+      },
+      createdTournaments: true,
+    },
   });
-  const [tournamentHistory, setTournamentHistory] = useState<{ id: number; name: string; game: string; date: string; imageUrl?: string; didWin: boolean | null }[]>([]);
 
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const res = await fetch(`/api/user/pseudo/${pseudo}`);
-        if (!res.ok) throw new Error("Erreur lors du chargement du profil");
-        const data = await res.json();
-        setUser(data);
-
-        const joined = data.joinedTournaments || [];
-        const created = data.createdTournaments || [];
-
-        setStats({
-          tournamentsPlayed: joined.length,
-          tournamentsWon: data.tournamentsWon ?? 0,
-          ranking: data.ranking ?? 0,
-          tournamentsCreated: created.length,
-        });
-
-        const userId = data.id;
-        const history = joined.map((t: { id: number; name: string; game: string; date: string; imageUrl?: string; matches?: { round: number; matchIndex: number; winnerId?: number }[] }) => {
-          const finalRound = Math.max(...(t.matches || []).map(m => m.round), 0);
-          const finalMatch = t.matches?.find(
-            m => m.round === finalRound && m.matchIndex === 0
-          );
-          const didWin = finalMatch?.winnerId
-            ? finalMatch.winnerId === userId
-            : null;
-
-          return {
-            id: t.id,
-            name: t.name,
-            game: t.game,
-            date: t.date,
-            imageUrl: t.imageUrl,
-            didWin,
-          };
-        });
-
-        setTournamentHistory(history);
-      } catch (err) {
-        console.error("Erreur de chargement :", err);
-      }
-    };
-
-    fetchProfile();
-  }, [pseudo]);
-
-  if (!user)
+  if (!user) {
     return (
       <div className="text-center text-gray-400 text-2xl">
-        Chargement du profil...
+        Profil introuvable.
       </div>
     );
+  }
+
+  const joinedTournaments = user.tournamentParticipations.map(
+    (participation) => participation.tournament as TournamentItem
+  );
+
+  const stats = {
+    tournamentsPlayed: joinedTournaments.length,
+    tournamentsWon: user.tournamentsWon ?? 0,
+    ranking: user.ranking ?? 0,
+    tournamentsCreated: user.createdTournaments?.length ?? 0,
+  };
+
+  const tournamentHistory = joinedTournaments.map((t) => {
+    const rounds = (t.matches || []).map((m) => m.round);
+    const finalRound = rounds.length > 0 ? Math.max(...rounds) : 0;
+    const finalMatch = t.matches?.find(
+      (m) => m.round === finalRound && m.matchIndex === 0
+    );
+    const didWin = finalMatch?.winnerId ? finalMatch.winnerId === user.id : null;
+
+    return {
+      id: t.id,
+      name: t.name,
+      game: t.game,
+      date: t.date,
+      imageUrl: t.imageUrl ?? undefined,
+      didWin,
+    };
+  });
 
   const memberSince = new Date(user.createdAt).toLocaleDateString("fr-FR", {
     year: "numeric",
@@ -115,12 +126,12 @@ export default function PublicProfilePage() {
             {[
               {
                 icon: <Gamepad size={48} className="text-blue-400" />,
-                label: "Tournois joués",
+                label: "Tournois joues",
                 value: stats.tournamentsPlayed,
               },
               {
                 icon: <Trophy size={48} className="text-yellow-400" />,
-                label: "Tournois gagnés",
+                label: "Tournois gagnes",
                 value: stats.tournamentsWon,
               },
               {
@@ -130,7 +141,7 @@ export default function PublicProfilePage() {
               },
               {
                 icon: <PlusCircle size={48} className="text-green-400" />,
-                label: "Tournois créés",
+                label: "Tournois crees",
                 value: stats.tournamentsCreated,
               },
             ].map((s, i) => (
@@ -150,7 +161,7 @@ export default function PublicProfilePage() {
         <div className="mt-12">
           <h2 className="text-3xl font-bold mb-6">Historique des tournois</h2>
           {tournamentHistory.length === 0 ? (
-            <p className="text-gray-400">Aucun tournoi joué pour le moment.</p>
+            <p className="text-gray-400">Aucun tournoi joue pour le moment.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {tournamentHistory.map((t, i) => {
@@ -165,7 +176,7 @@ export default function PublicProfilePage() {
                   t.didWin === true
                     ? "Victoire"
                     : t.didWin === false
-                    ? "Défaite"
+                    ? "Defaite"
                     : "En cours";
 
                 const resultColor =

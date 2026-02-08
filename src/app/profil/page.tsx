@@ -1,112 +1,146 @@
-"use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
 import Image from "next/image";
-import {
-  Gamepad,
-  Trophy,
-  Medal,
-  RotateCcw,
-  PlusCircle,
-} from "lucide-react";
+import { Gamepad, Trophy, Medal, PlusCircle } from "lucide-react";
 import TokensWidget from "@/components/TokensWidget";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { refreshUserTokensIfNeeded } from "@/lib/tokens";
+import AvatarRegenerateButton from "./AvatarRegenerateButton";
+
+export const dynamic = "force-dynamic";
+
+const DEFAULT_TOKENS_PER_MONTH = 3;
 
 const getBackgroundImage = (game: string) => {
   const map: Record<string, string> = {
     LEAGUE_OF_LEGENDS: "/images/lol_bg.webp",
-    VALORANT: "/images/valorant_bg.png",
-    OVERWATCH: "/images/ow_bg.jpg",
-    FALL_GUYS: "/images/fg_bg.jpg",
-    MARVELS_RIVALS: "/images/marvel_bg.jpg",
-    MINECRAFT: "/images/minecraft_bg.jpg",
+    VALORANT: "/images/valorant_bg.webp",
+    OVERWATCH: "/images/ow_bg.webp",
+    FALL_GUYS: "/images/fg_bg.webp",
+    MARVELS_RIVALS: "/images/marvel_bg.webp",
+    MINECRAFT: "/images/minecraft_bg.webp",
   };
   return map[game] || "/images/default.jpg";
 };
 
-export default function Profile() {
-  const { data: session } = useSession();
-  const [memberSince, setMemberSince] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState<string>();
-  const [plan, setPlan] = useState<null | { id: number; name: string; priceCents: number; tokensPerMonth: number }>(null);
-  const [stats, setStats] = useState({
-    tournamentsPlayed: 0,
-    tournamentsWon: 0,
-    ranking: 0,
-    tournamentsCreated: 0,
+type TournamentMatch = {
+  round: number;
+  matchIndex: number;
+  winnerId?: number | null;
+};
+
+type TournamentItem = {
+  id: number;
+  name: string;
+  game: string;
+  date: Date;
+  imageUrl?: string | null;
+  matches?: TournamentMatch[] | null;
+};
+
+export default async function Profile() {
+  const session = await auth();
+
+  if (!session?.user?.email) {
+    return (
+      <div className="text-center text-gray-400 text-2xl">
+        Connecte-toi pour acceder a ton profil.
+      </div>
+    );
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    include: {
+      createdTournaments: true,
+      plan: true,
+      tournamentParticipations: {
+        where: { isActive: true },
+        include: {
+          tournament: {
+            include: {
+              matches: true,
+            },
+          },
+        },
+      },
+    },
   });
-  const [tournamentHistory, setTournamentHistory] = useState<
-    {
-      id: number;
-      name: string;
-      game: string;
-      date: string;
-      imageUrl?: string;
-      didWin: boolean | null;
-    }[]
-  >([]);
 
-  useEffect(() => {
-    if (!session?.user?.email) return;
+  if (!user) {
+    return (
+      <div className="text-center text-gray-400 text-2xl">
+        Profil introuvable.
+      </div>
+    );
+  }
 
-    const fetchUserData = async () => {
-      const res = await fetch(`/api/user?email=${session.user.email}`);
-      const data: any = await res.json();
-      if (data.avatarUrl) {
-        setAvatarUrl(data.avatarUrl.replace("/svg?", "/png?"));
-      }
+  const memberSince = user.createdAt
+    ? new Date(user.createdAt).toLocaleDateString("fr-FR", {
+        year: "numeric",
+        month: "long",
+      })
+    : "";
 
-      if (data.createdAt) {
-        const date = new Date(data.createdAt);
-        setMemberSince(
-          date.toLocaleDateString("fr-FR", {
-            year: "numeric",
-            month: "long",
-          })
-        );
-      }
+  const joinedTournaments = user.tournamentParticipations.map(
+    (participation) => participation.tournament as TournamentItem
+  );
 
-      const joinedTournaments = data.joinedTournaments || [];
+  const stats = {
+    tournamentsPlayed: joinedTournaments.length,
+    tournamentsWon: user.tournamentsWon ?? 0,
+    ranking: user.ranking ?? 0,
+    tournamentsCreated: user.createdTournaments?.length ?? 0,
+  };
 
-      setStats({
-        tournamentsPlayed: joinedTournaments.length,
-        tournamentsWon: data.tournamentsWon ?? 0,
-        ranking: data.ranking ?? 0,
-        tournamentsCreated: data.createdTournaments?.length ?? 0,
-      });
+  const tournamentHistory = joinedTournaments.map((t) => {
+    const rounds = (t.matches || []).map((m) => m.round);
+    const finalRound = rounds.length > 0 ? Math.max(...rounds) : 0;
+    const finalMatch = t.matches?.find(
+      (m) => m.round === finalRound && m.matchIndex === 0
+    );
+    const didWin = finalMatch?.winnerId ? finalMatch.winnerId === user.id : null;
 
-      if (data.plan) {
-        setPlan({ id: data.plan.id, name: data.plan.name, priceCents: data.plan.priceCents, tokensPerMonth: data.plan.tokensPerMonth });
-      } else {
-        setPlan(null);
-      }
-
-      const userId = data.id;
-
-      const history = joinedTournaments.map((t: { id: number; name: string; game: string; date: string; imageUrl?: string; matches?: { round: number; matchIndex: number; winnerId?: number }[] }) => {
-        const finalRound = Math.max(...(t.matches || []).map(m => m.round), 0);
-        const finalMatch = t.matches?.find(
-          m => m.round === finalRound && m.matchIndex === 0
-        );
-        const didWin = finalMatch?.winnerId
-          ? finalMatch.winnerId === userId
-          : null;
-
-        return {
-          id: t.id,
-          name: t.name,
-          game: t.game,
-          date: t.date,
-          imageUrl: t.imageUrl,
-          didWin,
-        };
-      });
-
-      setTournamentHistory(history);
+    return {
+      id: t.id,
+      name: t.name,
+      game: t.game,
+      date: t.date,
+      imageUrl: t.imageUrl ?? undefined,
+      didWin,
     };
+  });
 
-    fetchUserData();
-  }, [session]);
+  const avatarUrl = user.avatarUrl
+    ? user.avatarUrl.replace("/svg?", "/png?")
+    : undefined;
+
+  const plan = user.plan
+    ? {
+        id: user.plan.id,
+        name: user.plan.name,
+        priceCents: user.plan.priceCents,
+        tokensPerMonth: user.plan.tokensPerMonth,
+      }
+    : null;
+
+  const userWithTokens = await refreshUserTokensIfNeeded(user.id);
+  const tokensPerMonth = userWithTokens.plan?.tokensPerMonth ?? DEFAULT_TOKENS_PER_MONTH;
+  const rawUsedTokens = userWithTokens.tokensUsedThisMonth;
+  const bonusTokens = Math.max(0, -rawUsedTokens);
+  const totalTokensThisMonth = tokensPerMonth + bonusTokens;
+  const usedTokens = Math.min(Math.max(0, rawUsedTokens), totalTokensThisMonth);
+  const remainingTokens = Math.max(0, totalTokensThisMonth - usedTokens);
+
+  const initialTokensInfo = {
+    remainingTokens,
+    usedTokens,
+    totalTokensThisMonth,
+    plan: userWithTokens.plan?.name ?? "Plan Gratuit",
+    monthStart: userWithTokens.tokensMonthStart
+      ? userWithTokens.tokensMonthStart.toISOString()
+      : null,
+  };
 
   return (
     <div className="bg-[#232426] text-white flex flex-col items-center justify-center px-4 py-10">
@@ -125,35 +159,31 @@ export default function Profile() {
             ) : (
               <div className="w-full h-full bg-[#754bb2] border-4 border-[#8F60D0] rounded-full" />
             )}
-            <button
-              onClick={async () => {
-                const res = await fetch("/api/user/avatar", {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ email: session?.user?.email }),
-                });
-                const data: { success?: boolean } = await res.json();
-                if (data.success) window.location.reload();
-              }}
-              className="absolute -bottom-2 -right-2 bg-[#8F60D0] hover:bg-[#A855F7] text-white p-2 rounded-full shadow cursor-pointer transition"
-            >
-              <RotateCcw size={18} />
-            </button>
+            <AvatarRegenerateButton email={session.user.email} />
           </div>
           <h1 className="text-4xl font-bold text-[#8F60D0] mt-4">
-            {session?.user?.pseudo}
+            {user.pseudo}
           </h1>
           <p className="text-gray-300 text-lg">Membre depuis {memberSince}</p>
           {plan ? (
-            <p className="text-gray-200 mt-2">Forfait actuel : <strong className="text-[#8F60D0]">{plan.name}</strong> — {(plan.priceCents/100).toFixed(2)}€ / mois</p>
+            <p className="text-gray-200 mt-2">
+              Forfait actuel :{" "}
+              <strong className="text-[#8F60D0]">{plan.name}</strong> -{" "}
+              {(plan.priceCents / 100).toFixed(2)} EUR / mois
+            </p>
           ) : (
-            <p className="text-gray-400 mt-2">Aucun forfait actif — <a href="/abonnements" className="text-[#8F60D0] underline">Voir les abonnements</a></p>
+            <p className="text-gray-400 mt-2">
+              Aucun forfait actif -{" "}
+              <a href="/abonnements" className="text-[#8F60D0] underline">
+                Voir les abonnements
+              </a>
+            </p>
           )}
         </div>
 
         {/* Tokens Widget */}
         <div className="mt-10">
-          <TokensWidget />
+          <TokensWidget initialTokensInfo={initialTokensInfo} />
         </div>
 
         {/* Stats */}
@@ -163,12 +193,12 @@ export default function Profile() {
             {[
               {
                 icon: <Gamepad size={48} className="text-blue-400" />,
-                label: "Tournois joués",
+                label: "Tournois joues",
                 value: stats.tournamentsPlayed,
               },
               {
                 icon: <Trophy size={48} className="text-yellow-400" />,
-                label: "Tournois gagnés",
+                label: "Tournois gagnes",
                 value: stats.tournamentsWon,
               },
               {
@@ -178,7 +208,7 @@ export default function Profile() {
               },
               {
                 icon: <PlusCircle size={48} className="text-green-400" />,
-                label: "Tournois créés",
+                label: "Tournois crees",
                 value: stats.tournamentsCreated,
               },
             ].map((s, i) => (
@@ -200,7 +230,7 @@ export default function Profile() {
             Historique des tournois
           </h2>
           {tournamentHistory.length === 0 ? (
-            <p className="text-gray-400">Aucun tournoi joué pour le moment.</p>
+            <p className="text-gray-400">Aucun tournoi joue pour le moment.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {tournamentHistory.map((t, i) => {
@@ -214,17 +244,19 @@ export default function Profile() {
                 );
                 const fallback = getBackgroundImage(t.game);
 
-                const resultLabel = t.didWin === true
-                  ? "Victoire"
-                  : t.didWin === false
-                  ? "Défaite"
-                  : "En cours";
+                const resultLabel =
+                  t.didWin === true
+                    ? "Victoire"
+                    : t.didWin === false
+                    ? "Defaite"
+                    : "En cours";
 
-                const resultColor = t.didWin === true
-                  ? "text-green-400"
-                  : t.didWin === false
-                  ? "text-red-400"
-                  : "text-yellow-400";
+                const resultColor =
+                  t.didWin === true
+                    ? "text-green-400"
+                    : t.didWin === false
+                    ? "text-red-400"
+                    : "text-yellow-400";
 
                 return (
                   <Link

@@ -56,6 +56,8 @@ export async function GET(req: Request) {
               tokensPerMonth: user.plan.tokensPerMonth,
             }
           : null,
+    }, {
+      headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
     console.error("Erreur GET /api/user :", error);
