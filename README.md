@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GLHF
 
-## Getting Started
+GLHF est une plateforme web pour organiser et participer a des tournois de jeux video. Le produit integre un systeme de tokens mensuels, des abonnements PayPal, un espace admin et des pages communautaires (classements, profils, tournois).
 
-First, run the development server:
+## Fonctionnalites
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Creation et participation aux tournois
+- Brackets et suivi des matchs
+- Systemes de tokens mensuels avec reset automatique
+- Abonnements PayPal (plans gratuits et premium)
+- Espace admin (gestion des tournois, utilisateurs, paiements)
+- Pages publiques : home, classement, profils
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Stack technique
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Next.js (App Router) + TypeScript
+- Prisma + MySQL
+- NextAuth v5
+- Tailwind CSS
+- PayPal SDK
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Prerequis
 
-## Learn More
+- Node.js 20+
+- MySQL (ou base compatible Prisma)
 
-To learn more about Next.js, take a look at the following resources:
+## Installation
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Installer les dependances :
+   ```bash
+   npm install
+   ```
+1. Copier les variables d'environnement :
+   ```bash
+   cp .env.example .env.local
+   ```
+1. Configurer la base de donnees et Prisma :
+   ```bash
+   npx prisma migrate dev
+   npx prisma generate
+   ```
+1. Initialiser les forfaits (optionnel si deja en base) :
+   ```bash
+   node scripts/seed-plans.js
+   ```
+1. Lancer le serveur de dev :
+   ```bash
+   npm run dev
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Scripts
 
-## Deploy on Vercel
+- `npm run dev`
+- `npm run build`
+- `npm run start`
+- `npm run lint`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Documentation
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `TOKENS_SYSTEM.md` pour la logique tokens et les endpoints
+
+## Captures d'ecran
+
+Ajoutez vos captures dans `docs/` (ex : `docs/home.png`) et referencez-les ici pour illustrer l'app.

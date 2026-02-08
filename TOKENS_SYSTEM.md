@@ -14,9 +14,9 @@ Le système de tokens GLHF permet aux utilisateurs de participer aux tournois en
 
 ### Plans Disponibles
 1. **Plan Gratuit** : 3 tokens/mois - 0€
-2. **Plan Bronze** : 5 tokens/mois - 5.99€
-3. **Plan Argent** : 8 tokens/mois - 9.99€
-4. **Plan Or** : 30 tokens/mois - 19.99€
+2. **Plan Bronze** : 5 tokens/mois - 0.99€
+3. **Plan Argent** : 8 tokens/mois - 1.49€
+4. **Plan Or** : 30 tokens/mois - 1.99€
 
 ## Configuration
 
@@ -84,7 +84,7 @@ Le reset se fait automatiquement lors de la première interaction de l'utilisate
 
 ## Pages Utilisateur
 
-### `/plan`
+### `/abonnements`
 - Affichage de tous les forfaits disponibles
 - Comparaison des fonctionnalités
 - Boutons d'abonnement PayPal
@@ -139,4 +139,5 @@ Surveillez :
 ### Remboursements manqués
 - Vérifiez que la date du tournoi est correctement définie
 - Les tournois passés ne donnent pas droit à remboursement
+
 
