@@ -12,9 +12,10 @@ export default async function AdminUserDetail({ params }: Props) {
   const session = await auth();
   const { id } = await params;
 
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
     return notFound();
   }
+  const viewerRole = session.user.role;
 
   const userId = parseInt(id, 10);
   if (!userId) {
@@ -24,6 +25,7 @@ export default async function AdminUserDetail({ params }: Props) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
+      plan: true,
       createdTournaments: {
         select: {
           id: true,
@@ -96,7 +98,12 @@ export default async function AdminUserDetail({ params }: Props) {
 
   const statusColor = user.isDeleted ? "text-red-400" : "text-green-400";
   const statusLabel = user.isDeleted ? "Supprimé" : "Actif";
-  const roleColor = user.role === "ADMIN" ? "text-purple-400" : "text-blue-400";
+  const roleColor =
+    user.role === "SUPER_ADMIN"
+      ? "text-amber-400"
+      : user.role === "ADMIN"
+      ? "text-purple-400"
+      : "text-blue-400";
 
   return (
     <div className="space-y-6">
@@ -115,6 +122,7 @@ export default async function AdminUserDetail({ params }: Props) {
         statusColor={statusColor}
         statusLabel={statusLabel}
         roleColor={roleColor}
+        viewerRole={viewerRole}
         gameLabels={gameLabels}
       />
 

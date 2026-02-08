@@ -85,7 +85,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
         </nav>
 
         {/* Indicateur de statut en bas */}
-        <div className="absolute bottom-5 left-5 right-5">
+        <div className="bottom-5 left-5 right-5">
           <div className="text-xs text-gray-500 border-t border-[#2a2c30] pt-4">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>

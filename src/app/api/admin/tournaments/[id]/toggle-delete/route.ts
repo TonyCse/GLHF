@@ -9,12 +9,14 @@ export async function POST(
   try {
     const session = await auth();
     
-    if (!session || session.user.role !== "ADMIN") {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 403 });
+    if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
+      return NextResponse.json({ error: "Non autorise" }, { status: 403 });
     }
 
-    const tournamentId = parseInt(params.id);
-    if (isNaN(tournamentId)) {
+    const idFromParams = params?.id;
+    const idFromPath = new URL(req.url).pathname.split("/").filter(Boolean).slice(-2, -1)[0];
+    const tournamentId = Number(idFromParams ?? idFromPath);
+    if (!Number.isFinite(tournamentId)) {
       return NextResponse.json({ error: "ID invalide" }, { status: 400 });
     }
 
@@ -46,8 +48,6 @@ export async function POST(
     );
   }
 }
-
-
 
 
 

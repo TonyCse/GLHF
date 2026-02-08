@@ -218,7 +218,7 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
                   <button
                     onClick={() => removeParticipant(participant.user.id, participant.user.pseudo)}
                     disabled={isLoading}
-                    className="rounded-lg border border-red-600/40 text-red-300 hover:border-red-500 hover:text-red-200 px-3 py-1.5 text-xs disabled:opacity-50 transition-colors"
+                    className="rounded-lg border border-red-600/40 text-red-300 hover:border-red-500 hover:text-red-200 px-3 py-1.5 text-xs disabled:opacity-50 transition-colors cursor-pointer"
                   >
                     {isLoading ? "..." : "Enlever"}
                   </button>
@@ -252,7 +252,7 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-300"
+                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-300 cursor-pointer"
                 >
                   ✕
                 </button>
@@ -280,7 +280,7 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
                   Chargement des utilisateurs...
                 </div>
               ) : filteredUsers.length > 0 ? (
-                <div className="space-y-2 max-h-80 overflow-y-auto">
+                <div className="admin-scroll space-y-2 max-h-80 overflow-y-auto">
                   {filteredUsers.map((user) => (
                     <div
                       key={user.id}
@@ -301,7 +301,7 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
                       <button
                         onClick={() => addParticipant(user.id)}
                         disabled={isLoading}
-                        className="rounded-lg bg-[#8F60D0] hover:bg-[#A855F7] px-4 py-2 text-sm font-medium text-white disabled:opacity-50 transition-colors"
+                        className="rounded-lg bg-[#8F60D0] hover:bg-[#A855F7] px-4 py-2 text-sm font-medium text-white disabled:opacity-50 transition-colors cursor-pointer"
                       >
                         {isLoading ? "..." : "Ajouter"}
                       </button>

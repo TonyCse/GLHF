@@ -14,7 +14,7 @@ export default async function AdminTournamentDetail({ params }: Props) {
   const session = await auth();
   const { id } = await params;
 
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
     return notFound();
   }
 

@@ -7,14 +7,17 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
     // non-admin → 403 + retour à la liste
     const back = new URL("/admin/users?err=forbidden", req.url);
     return NextResponse.redirect(back);
   }
+  const isSuperAdmin = session.user.role === "SUPER_ADMIN";
 
-  const resolvedParams = await params;
-  const id = Number(resolvedParams.id);
+  const resolvedParams = await Promise.resolve(params as unknown as { id?: string });
+  const idFromParams = resolvedParams?.id;
+  const idFromPath = new URL(req.url).pathname.split("/").filter(Boolean).slice(-2, -1)[0];
+  const id = Number(idFromParams ?? idFromPath);
   if (!Number.isFinite(id)) {
     const back = new URL("/admin/users?err=bad_id", req.url);
     return NextResponse.redirect(back);
@@ -33,6 +36,11 @@ export async function POST(
 
   if (!user) {
     const back = new URL("/admin/users?err=not_found", req.url);
+    return NextResponse.redirect(back);
+  }
+
+  if (user.role === "SUPER_ADMIN" && !isSuperAdmin) {
+    const back = new URL("/admin/users?err=forbidden", req.url);
     return NextResponse.redirect(back);
   }
 

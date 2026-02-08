@@ -8,7 +8,7 @@ export default function FilterForm() {
   const searchParams = useSearchParams();
 
   const currentQ = searchParams.get("q") ?? "";
-  const currentShow = searchParams.get("show") ?? "";
+  const currentShow = searchParams.get("show") ?? "all";
 
   const updateFilters = useCallback((updates: Record<string, string>) => {
     const params = new URLSearchParams();
@@ -18,7 +18,7 @@ export default function FilterForm() {
     const show = updates.show ?? currentShow;
     
     if (q.trim()) params.set("q", q.trim());
-    if (show === "all") params.set("show", "all");
+    if (show) params.set("show", show);
     
     const query = params.toString();
     router.push(`/admin/users${query ? `?${query}` : ""}`);
@@ -27,7 +27,7 @@ export default function FilterForm() {
   return (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
       <button
-        onClick={() => updateFilters({ show: currentShow === "all" ? "" : "all" })}
+        onClick={() => updateFilters({ show: currentShow === "all" ? "active" : "all" })}
         className="text-xs sm:text-sm rounded-lg border border-[#2a2c30] px-3 py-2 hover:border-[#8F60D0] transition-colors whitespace-nowrap"
       >
         {currentShow === "all" ? "Masquer les supprimés" : "Afficher les supprimés"}
@@ -43,4 +43,3 @@ export default function FilterForm() {
     </div>
   );
 }
-

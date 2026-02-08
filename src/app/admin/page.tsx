@@ -10,7 +10,10 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminDashboard() {
   const session = await auth();
-  if (!session || session.user.role !== "ADMIN") redirect("/");
+  if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
+    redirect("/");
+  }
+  const isSuperAdmin = session.user.role === "SUPER_ADMIN";
 
   const [
     users, 
@@ -29,7 +32,7 @@ export default async function AdminDashboard() {
     tournamentsByMonth
   ] = await Promise.all([
     prisma.user.count(),
-    prisma.user.count({ where: { role: Role.ADMIN } }),
+    prisma.user.count({ where: { role: { in: [Role.ADMIN, Role.SUPER_ADMIN] } } }),
     prisma.tournament.count(),
     prisma.tournament.count({ where: { isDeleted: false } }),
     prisma.tournament.count({ where: { winnerId: { not: null } } }),
@@ -338,9 +341,11 @@ export default async function AdminDashboard() {
             <a href="/admin/tournois" className="block w-full text-center rounded-lg border border-[#2a2c30] hover:border-[#8F60D0] hover:bg-[#8F60D0]/10 px-4 py-3 text-2xl transition-colors">
               Voir les tournois
             </a>
-            <a href="/admin/paiements" className="block w-full text-center rounded-lg border border-[#2a2c30] hover:border-[#8F60D0] hover:bg-[#8F60D0]/10 px-4 py-3 text-2xl transition-colors">
-              Paiements
-            </a>
+            {isSuperAdmin && (
+              <a href="/admin/paiements" className="block w-full text-center rounded-lg border border-[#2a2c30] hover:border-[#8F60D0] hover:bg-[#8F60D0]/10 px-4 py-3 text-2xl transition-colors">
+                Paiements
+              </a>
+            )}
           </div>
         </div>
       </div>

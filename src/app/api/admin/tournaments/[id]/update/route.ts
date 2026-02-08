@@ -7,14 +7,17 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  const { id } = await params;
+  const resolvedParams = await Promise.resolve(params as unknown as { id?: string });
+  const idFromParams = resolvedParams?.id;
+  const idFromPath = new URL(request.url).pathname.split("/").filter(Boolean).slice(-2, -1)[0];
+  const id = idFromParams ?? idFromPath;
 
-  if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 403 });
+  if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Non autorise" }, { status: 403 });
   }
 
-  const tournamentId = parseInt(id, 10);
-  if (!tournamentId) {
+  const tournamentId = Number(id);
+  if (!Number.isFinite(tournamentId)) {
     return NextResponse.json({ error: "ID invalide" }, { status: 400 });
   }
 

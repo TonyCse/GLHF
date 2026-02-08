@@ -84,7 +84,7 @@ export default function TournamentEditForm({ tournament, onTournamentUpdate }: P
       <div className="flex items-center gap-2">
         <button
           onClick={() => setIsEditing(true)}
-          className="rounded-lg bg-blue-600 hover:bg-blue-700 px-3 py-1.5 text-sm text-white transition-colors"
+          className="rounded-lg bg-blue-600 hover:bg-blue-700 px-3 py-1.5 text-sm text-white transition-colors cursor-pointer"
         >
           ✏️ Modifier
         </button>
@@ -98,7 +98,7 @@ export default function TournamentEditForm({ tournament, onTournamentUpdate }: P
         <h3 className="text-lg font-medium text-white">Modifier le tournoi</h3>
         <button
           onClick={() => setIsEditing(false)}
-          className="text-gray-400 hover:text-white text-sm"
+          className="text-gray-400 hover:text-white text-sm cursor-pointer"
         >
           ✕ Annuler
         </button>
@@ -192,14 +192,14 @@ export default function TournamentEditForm({ tournament, onTournamentUpdate }: P
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full sm:w-auto rounded-lg bg-[#8F60D0] hover:bg-[#A855F7] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            className="w-full sm:w-auto rounded-lg bg-[#8F60D0] hover:bg-[#A855F7] px-4 py-2 text-sm font-medium text-white disabled:opacity-50 cursor-pointer"
           >
             {isLoading ? "Mise à jour..." : "Sauvegarder"}
           </button>
           <button
             type="button"
             onClick={() => setIsEditing(false)}
-            className="w-full sm:w-auto rounded-lg border border-[#2a2c30] hover:border-[#8F60D0] px-4 py-2 text-sm"
+            className="w-full sm:w-auto rounded-lg border border-[#2a2c30] hover:border-[#8F60D0] px-4 py-2 text-sm cursor-pointer"
           >
             Annuler
           </button>

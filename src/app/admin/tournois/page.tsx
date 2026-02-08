@@ -41,7 +41,9 @@ export default async function AdminTournaments({
   searchParams?: Promise<SearchParams>;
 }) {
   const session = await auth();
-  if (!session || session.user.role !== "ADMIN") redirect("/");
+  if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
+    redirect("/");
+  }
 
   const params = await searchParams;
   const q = (params?.q ?? "").trim();
@@ -133,7 +135,7 @@ export default async function AdminTournaments({
       </div>
 
       {/* Desktop Table */}
-      <div className="hidden md:block overflow-x-auto rounded-2xl border border-[#2a2c30]">
+      <div className="admin-scroll hidden md:block overflow-x-auto rounded-2xl border border-[#2a2c30]">
         <table className="min-w-full text-sm">
           <thead className="bg-[#1c1d1f]">
             <tr className="text-left text-gray-300">

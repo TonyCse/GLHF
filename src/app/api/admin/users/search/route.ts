@@ -5,8 +5,8 @@ import { prisma } from "@/lib/prisma";
 export async function GET(request: NextRequest) {
   const session = await auth();
 
-  if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Non autorise" }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);

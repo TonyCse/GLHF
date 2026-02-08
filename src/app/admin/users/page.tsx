@@ -30,14 +30,18 @@ export default async function AdminUsers({
   searchParams?: Promise<SearchParams>;
 }) {
   const session = await auth();
-  if (!session || session.user.role !== "ADMIN") redirect("/");
+  if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
+    redirect("/");
+  }
+  const isSuperAdmin = session.user.role === "SUPER_ADMIN";
 
   const params = await searchParams;
   const selfId = Number(session.user.id);
   const q = (params?.q ?? "").trim();
   const pNum = Number(params?.p ?? "1");
   const page = Number.isFinite(pNum) && pNum > 0 ? pNum : 1;
-  const showAll = (params?.show ?? "") === "all";
+  const showParam = params?.show ?? "all";
+  const showAll = showParam !== "active";
 
   const baseWhere = showAll ? {} : { isDeleted: false };
   const where = q
@@ -95,7 +99,7 @@ export default async function AdminUsers({
       </div>
 
       {/* Desktop Table */}
-      <div className="hidden lg:block overflow-x-auto rounded-2xl border border-[#2a2c30]">
+      <div className="admin-scroll hidden lg:block overflow-x-auto rounded-2xl border border-[#2a2c30]">
         <table className="min-w-full text-base">
           <thead className="bg-[#1c1d1f]">
             <tr className="text-left text-gray-300">
@@ -111,6 +115,9 @@ export default async function AdminUsers({
           <tbody>
             {rows.map((u) => {
               const isSelf = u.id === selfId;
+              const isSuperAdminUser = u.role === "SUPER_ADMIN";
+              const canManageRole = !isSelf && (!isSuperAdminUser || isSuperAdmin);
+              const canManageDelete = !isSelf && (!isSuperAdminUser || isSuperAdmin);
               return (
                 <tr
                   key={u.id}
@@ -128,7 +135,9 @@ export default async function AdminUsers({
                   <td className="p-4">
                     <span
                       className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
-                        u.role === "ADMIN"
+                        u.role === "SUPER_ADMIN"
+                          ? "bg-amber-600/20 text-amber-300"
+                          : u.role === "ADMIN"
                           ? "bg-[#2b2140] text-[#cdb5ff]"
                           : "bg-[#232426] text-gray-300"
                       }`}
@@ -174,20 +183,24 @@ export default async function AdminUsers({
                     >
                       <button
                         className={`rounded-lg border px-4 py-2 text-sm min-w-[100px] transition-colors ${
-                          isSelf
+                          !canManageRole
                             ? "border-[#2a2c30] text-gray-500 cursor-not-allowed opacity-60"
                             : u.role === "ADMIN"
                             ? "border-blue-600/40 text-blue-300 hover:border-blue-500 hover:text-blue-200"
                             : "border-purple-600/40 text-purple-300 hover:border-purple-500 hover:text-purple-200"
                         }`}
                         title={
-                          isSelf
-                            ? "Vous ne pouvez pas changer votre propre rôle"
+                          !canManageRole
+                            ? "Vous ne pouvez pas modifier ce rôle"
                             : "Basculer le rôle"
                         }
-                        disabled={isSelf}
+                        disabled={!canManageRole}
                       >
-                        {u.role === "ADMIN" ? "↓ USER" : "↑ ADMIN"}
+                        {u.role === "SUPER_ADMIN"
+                          ? "SUPER_ADMIN"
+                          : u.role === "ADMIN"
+                          ? "↓ USER"
+                          : "↑ ADMIN"}
                       </button>
                     </form>
 
@@ -198,20 +211,20 @@ export default async function AdminUsers({
                     >
                       <button
                         className={`rounded-lg px-4 py-2 text-sm border ${
-                          isSelf
+                          !canManageDelete
                             ? "border-[#2a2c30] text-gray-500 cursor-not-allowed opacity-60"
                             : u.isDeleted
                             ? "border-green-600/40 text-green-300 hover:border-green-500 hover:text-green-200"
                             : "border-red-600/40 text-red-300 hover:border-red-500 hover:text-red-200"
                         }`}
                         title={
-                          isSelf
-                            ? "Vous ne pouvez pas vous supprimer vous-même"
+                          !canManageDelete
+                            ? "Vous ne pouvez pas modifier ce compte"
                             : u.isDeleted
                             ? "Restaurer l'utilisateur"
                             : "Supprimer (soft delete)"
                         }
-                        disabled={isSelf}
+                        disabled={!canManageDelete}
                       >
                         {u.isDeleted ? "Restaurer" : "Supprimer"}
                       </button>
@@ -235,6 +248,9 @@ export default async function AdminUsers({
       <div className="lg:hidden space-y-4">
         {rows.map((u) => {
           const isSelf = u.id === selfId;
+          const isSuperAdminUser = u.role === "SUPER_ADMIN";
+          const canManageRole = !isSelf && (!isSuperAdminUser || isSuperAdmin);
+          const canManageDelete = !isSelf && (!isSuperAdminUser || isSuperAdmin);
           return (
             <div
               key={u.id}
@@ -254,7 +270,9 @@ export default async function AdminUsers({
                   <div className="flex flex-wrap gap-2">
                     <span
                       className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-                        u.role === "ADMIN"
+                        u.role === "SUPER_ADMIN"
+                          ? "bg-amber-600 text-amber-100"
+                          : u.role === "ADMIN"
                           ? "bg-purple-600 text-purple-100"
                           : "bg-gray-600 text-gray-200"
                       }`}
@@ -319,16 +337,20 @@ export default async function AdminUsers({
                   >
                     <button
                       className={`w-full rounded-lg border px-4 py-2.5 text-sm transition-colors min-h-[42px] flex items-center justify-center ${
-                        isSelf
+                        !canManageRole
                           ? "border-[#2a2c30] text-gray-500 cursor-not-allowed opacity-60"
                           : u.role === "ADMIN"
                           ? "border-blue-600/50 text-blue-300 hover:border-blue-500 hover:bg-blue-600/10"
                           : "border-purple-600/50 text-purple-300 hover:border-purple-500 hover:bg-purple-600/10"
                       }`}
-                      disabled={isSelf}
-                      title={isSelf ? "Vous ne pouvez pas changer votre propre rôle" : "Changer le rôle"}
+                      disabled={!canManageRole}
+                      title={!canManageRole ? "Vous ne pouvez pas modifier ce rôle" : "Changer le rôle"}
                     >
-                      {u.role === "ADMIN" ? "↓ Changer en USER" : "↑ Changer en ADMIN"}
+                      {u.role === "SUPER_ADMIN"
+                        ? "SUPER_ADMIN"
+                        : u.role === "ADMIN"
+                        ? "↓ Changer en USER"
+                        : "↑ Changer en ADMIN"}
                     </button>
                   </form>
 
@@ -339,16 +361,16 @@ export default async function AdminUsers({
                   >
                     <button
                       className={`w-full rounded-lg px-4 py-2.5 text-sm border transition-colors min-h-[42px] flex items-center justify-center ${
-                        isSelf
+                        !canManageDelete
                           ? "border-[#2a2c30] text-gray-500 cursor-not-allowed opacity-60"
                           : u.isDeleted
                           ? "border-green-600/50 text-green-300 hover:border-green-500 hover:bg-green-600/10"
                           : "border-red-600/50 text-red-300 hover:border-red-500 hover:bg-red-600/10"
                       }`}
-                      disabled={isSelf}
+                      disabled={!canManageDelete}
                       title={
-                        isSelf
-                          ? "Vous ne pouvez pas vous supprimer"
+                        !canManageDelete
+                          ? "Vous ne pouvez pas modifier ce compte"
                           : u.isDeleted
                           ? "Restaurer l'utilisateur"
                           : "Supprimer l'utilisateur"
@@ -392,7 +414,7 @@ export default async function AdminUsers({
                 href={`/admin/users?${buildQS({
                   q,
                   p: String(page - 1),
-                  show: showAll ? "all" : undefined,
+                  show: showAll ? "all" : "active",
                 })}`}
                 className="rounded-lg px-4 py-2 border border-[#2a2c30] text-gray-400 hover:border-[#8F60D0] hover:text-[#8F60D0] transition-colors"
               >
@@ -443,7 +465,7 @@ export default async function AdminUsers({
                 href={`/admin/users?${buildQS({
                   q,
                   p: String(page + 1),
-                  show: showAll ? "all" : undefined,
+                  show: showAll ? "all" : "active",
                 })}`}
                 className="rounded-lg px-4 py-2 border border-[#2a2c30] text-gray-400 hover:border-[#8F60D0] hover:text-[#8F60D0] transition-colors"
               >

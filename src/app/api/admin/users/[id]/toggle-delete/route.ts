@@ -8,11 +8,14 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   const session = await auth();
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
     return NextResponse.redirect(new URL("/admin/users?err=forbidden", req.url));
   }
+  const isSuperAdmin = session.user.role === "SUPER_ADMIN";
 
-  const id = Number(params.id);
+  const idFromParams = params?.id;
+  const idFromPath = new URL(req.url).pathname.split("/").filter(Boolean).slice(-2, -1)[0];
+  const id = Number(idFromParams ?? idFromPath);
   if (!Number.isFinite(id)) {
     return NextResponse.redirect(new URL("/admin/users?err=bad_id", req.url));
   }
@@ -24,10 +27,13 @@ export async function POST(
 
   const user = await prisma.user.findUnique({
     where: { id },
-    select: { isDeleted: true },
+    select: { isDeleted: true, role: true },
   });
   if (!user) {
     return NextResponse.redirect(new URL("/admin/users?err=not_found", req.url));
+  }
+  if (user.role === "SUPER_ADMIN" && !isSuperAdmin) {
+    return NextResponse.redirect(new URL("/admin/users?err=forbidden", req.url));
   }
 
   await prisma.user.update({

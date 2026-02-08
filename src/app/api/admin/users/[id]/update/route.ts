@@ -10,14 +10,17 @@ interface RouteParams {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   const session = await auth();
 
-  if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Non autorise" }, { status: 401 });
   }
+  const isSuperAdmin = session.user.role === "SUPER_ADMIN";
 
-  const { id } = await params;
-  const userId = parseInt(id, 10);
+  const resolvedParams = await Promise.resolve(params as unknown as { id?: string });
+  const idFromParams = resolvedParams?.id;
+  const idFromPath = new URL(request.url).pathname.split("/").filter(Boolean).slice(-2, -1)[0];
+  const userId = Number(idFromParams ?? idFromPath);
 
-  if (!userId) {
+  if (!Number.isFinite(userId)) {
     return NextResponse.json({ error: "ID utilisateur invalide" }, { status: 400 });
   }
 
@@ -31,6 +34,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       tournamentsWon,
       matchesWon,
       ranking,
+      tokensUsedThisMonth,
     } = body;
 
     // Validation basique
@@ -38,8 +42,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Pseudo et email sont requis" }, { status: 400 });
     }
 
-    if (!["USER", "ADMIN"].includes(role)) {
-      return NextResponse.json({ error: "Rôle invalide" }, { status: 400 });
+    if (!["USER", "ADMIN", "SUPER_ADMIN"].includes(role)) {
+      return NextResponse.json({ error: "Role invalide" }, { status: 400 });
     }
 
     // Vérifier que l'utilisateur existe
@@ -49,6 +53,12 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     if (!existingUser) {
       return NextResponse.json({ error: "Utilisateur non trouvé" }, { status: 404 });
+    }
+    if (existingUser.role === "SUPER_ADMIN" && !isSuperAdmin) {
+      return NextResponse.json({ error: "Acces refuse" }, { status: 403 });
+    }
+    if (role === "SUPER_ADMIN" && !isSuperAdmin) {
+      return NextResponse.json({ error: "Acces refuse" }, { status: 403 });
     }
 
     // Vérifier l'unicité du pseudo et de l'email (sauf pour l'utilisateur actuel)
@@ -75,6 +85,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     // Mettre à jour l'utilisateur
+    const parsedTokensUsed =
+      tokensUsedThisMonth !== undefined
+        ? parseInt(String(tokensUsedThisMonth), 10)
+        : undefined;
+    const normalizedTokensUsed =
+      parsedTokensUsed !== undefined && Number.isFinite(parsedTokensUsed)
+        ? parsedTokensUsed
+        : undefined;
+
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: {
@@ -85,11 +104,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         tournamentsWon: Math.max(0, parseInt(String(tournamentsWon)) || 0),
         matchesWon: Math.max(0, parseInt(String(matchesWon)) || 0),
         ranking: Math.max(0, parseInt(String(ranking)) || 0),
+        ...(normalizedTokensUsed !== undefined
+          ? { tokensUsedThisMonth: normalizedTokensUsed }
+          : {}),
       },
       select: {
         id: true,
         pseudo: true,
         email: true,
+        tokensUsedThisMonth: true,
         role: true,
       },
     });
@@ -106,7 +129,3 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     );
   }
 }
-
-
-
-

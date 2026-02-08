@@ -9,14 +9,16 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const session = await auth();
 
-  if (!session || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Non autorise" }, { status: 401 });
   }
 
-  const { id } = await params;
-  const tournamentId = parseInt(id, 10);
+  const resolvedParams = await Promise.resolve(params as unknown as { id?: string });
+  const idFromParams = resolvedParams?.id;
+  const idFromPath = new URL(request.url).pathname.split("/").filter(Boolean).slice(-2, -1)[0];
+  const tournamentId = Number(idFromParams ?? idFromPath);
 
-  if (!tournamentId) {
+  if (!Number.isFinite(tournamentId)) {
     return NextResponse.json({ error: "ID de tournoi invalide" }, { status: 400 });
   }
 
@@ -64,7 +66,5 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     );
   }
 }
-
-
 
 

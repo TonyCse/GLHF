@@ -15,6 +15,13 @@ interface User {
   matchesWon: number;
   ranking: number;
   createdAt: Date;
+  tokensUsedThisMonth: number;
+  tokensMonthStart?: Date | null;
+  plan?: {
+    id: number;
+    name: string;
+    tokensPerMonth: number;
+  } | null;
   _count: {
     createdTournaments: number;
     tournamentParticipations: number;
@@ -28,6 +35,7 @@ interface Props {
   statusColor: string;
   statusLabel: string;
   roleColor: string;
+  viewerRole: Role;
   gameLabels: Record<string, string>;
 }
 
@@ -35,7 +43,8 @@ export default function UserDetailClient({
   user: initialUser, 
   statusColor, 
   statusLabel, 
-  roleColor 
+  roleColor,
+  viewerRole
 }: Props) {
   const [user, setUser] = useState(initialUser);
 
@@ -51,6 +60,8 @@ export default function UserDetailClient({
       email: updatedData.email ?? prev.email,
       avatarUrl: updatedData.avatarUrl ?? prev.avatarUrl,
       role: updatedData.role ?? prev.role,
+      tokensUsedThisMonth: updatedData.tokensUsedThisMonth ?? prev.tokensUsedThisMonth,
+      plan: updatedData.plan ?? prev.plan,
     }));
   };
 
@@ -173,11 +184,8 @@ export default function UserDetailClient({
         <h2 className="text-xl sm:text-2xl font-bold text-white mb-6 flex items-center gap-2">
           ⚙️ Modifier l&apos;utilisateur
         </h2>
-        <UserEditForm user={user} onUserUpdate={handleUserUpdate} />
+        <UserEditForm user={user} onUserUpdate={handleUserUpdate} viewerRole={viewerRole} />
       </div>
     </div>
   );
 }
-
-
-
