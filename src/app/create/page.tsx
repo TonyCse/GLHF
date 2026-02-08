@@ -185,7 +185,11 @@ export default function CreateTournament() {
 
         {/* Message d'erreur ou succès */}
         {message && (
-          <p className={`text-center text-sm mb-4 ${message.type === "success" ? "text-green-400" : "text-red-400"}`}>
+          <p
+            role="status"
+            aria-live="polite"
+            className={`text-center text-sm mb-4 ${message.type === "success" ? "text-green-400" : "text-red-400"}`}
+          >
             {message.text}
           </p>
         )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Button from "./Button";
 import { PlusCircle } from "lucide-react";
 
@@ -12,6 +13,7 @@ export default function TournamentJoiner({
   textSize?: string;
 }) {
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleJoin = async () => {
     setLoading(true);
@@ -23,7 +25,7 @@ export default function TournamentJoiner({
       });
 
       if (res.ok) {
-        window.location.reload();
+        router.refresh();
       } else {
         console.error("Erreur lors de l'inscription");
       }

@@ -1,14 +1,19 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Check, Crown, Trophy, Zap, X, Award } from "lucide-react";
+import { Check, Trophy, X } from "lucide-react";
 import Image from "next/image";
 
 type Participant = {
   id: number;
   pseudo: string;
   avatar?: string;
+  avatarUrl?: string | null;
   isDeleted?: boolean;
+};
+
+type WinnersMap = {
+  [roundIndex: number]: { [matchIndex: number]: Participant };
 };
 
 type Props = {
@@ -18,7 +23,10 @@ type Props = {
 };
 
 export default function TournamentBracket({ participants, isCreator = false, tournamentId }: Props) {
-  const [winners, setWinners] = useState<{ [roundIndex: number]: { [matchIndex: number]: Participant } }>({});
+  const [winners, setWinners] = useState<WinnersMap>({});
+  const [, setIsUpdating] = useState(false);
+  const isUpdatingRef = useRef(false);
+  const updatingCountRef = useRef(0);
 
   const rounds = Math.ceil(Math.log2(Math.max(participants.length, 2)));
   const totalSlots = Math.pow(2, rounds);
@@ -32,12 +40,68 @@ export default function TournamentBracket({ participants, isCreator = false, tou
     return winners[round]?.[matchIndex] ?? null;
   };
 
-  const fetchWinners = async () => {
+  const startUpdating = () => {
+    updatingCountRef.current += 1;
+    isUpdatingRef.current = true;
+    setIsUpdating(true);
+  };
+
+  const stopUpdating = () => {
+    updatingCountRef.current = Math.max(0, updatingCountRef.current - 1);
+    const isActive = updatingCountRef.current > 0;
+    isUpdatingRef.current = isActive;
+    setIsUpdating(isActive);
+    return isActive;
+  };
+
+  const removeWinner = (next: WinnersMap, round: number, matchIndex: number) => {
+    if (!next[round]) return;
+    const { [matchIndex]: _removed, ...rest } = next[round];
+    if (Object.keys(rest).length) {
+      next[round] = rest;
+    } else {
+      delete next[round];
+    }
+  };
+
+  const clearWinnerPath = (next: WinnersMap, startRound: number, startMatchIndex: number) => {
+    let round = startRound + 1;
+    let matchIndex = Math.floor(startMatchIndex / 2);
+
+    while (round < rounds) {
+      removeWinner(next, round, matchIndex);
+      matchIndex = Math.floor(matchIndex / 2);
+      round += 1;
+    }
+  };
+
+  const applyOptimisticSelection = (round: number, matchIndex: number, winner: Participant) => {
+    setWinners((current) => {
+      const next: WinnersMap = { ...current };
+      const roundWinners = { ...(next[round] || {}) };
+      roundWinners[matchIndex] = winner;
+      next[round] = roundWinners;
+      clearWinnerPath(next, round, matchIndex);
+      return next;
+    });
+  };
+
+  const applyOptimisticCancel = (round: number, matchIndex: number) => {
+    setWinners((current) => {
+      const next: WinnersMap = { ...current };
+      removeWinner(next, round, matchIndex);
+      clearWinnerPath(next, round, matchIndex);
+      return next;
+    });
+  };
+
+  const fetchWinners = async (force = false) => {
+    if (isUpdatingRef.current && !force) return;
     try {
       const res = await fetch(`/api/match/list?tournamentId=${tournamentId}`);
       const data = await res.json();
       if (res.ok && data.matches) {
-        const loadedWinners: { [round: number]: { [index: number]: Participant } } = {};
+        const loadedWinners: WinnersMap = {};
 
         data.matches.forEach((match: { round: number; matchIndex: number; winner?: Participant }) => {
           const winner = match.winner;
@@ -58,7 +122,7 @@ export default function TournamentBracket({ participants, isCreator = false, tou
     fetchWinners();
     const interval = setInterval(fetchWinners, 5000);
     return () => clearInterval(interval);
-  }, [tournamentId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tournamentId]); 
 
   const handleValidateWinner = async (round: number, matchIndex: number, winner: Participant) => {
     try {
@@ -69,9 +133,6 @@ export default function TournamentBracket({ participants, isCreator = false, tou
       });
       const data = await res.json();
       if (res.ok && data?.match?.winner?.id === winner.id) {
-        fetchWinners();
-
-        // ✅ Mise à jour du champ winnerId dans Tournament si c'est la finale
         if (round === rounds - 1 && winner?.id) {
           await fetch(`/api/tournament/${tournamentId}/winner`, {
             method: "POST",
@@ -81,35 +142,98 @@ export default function TournamentBracket({ participants, isCreator = false, tou
             }),
           });
         }
+        return true;
       }
     } catch (err) {
       console.error("Erreur:", err);
     }
+    return false;
+  };
+
+  const deleteMatchWinner = async (round: number, matchIndex: number) => {
+    return fetch("/api/match/update", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tournamentId, round, matchIndex }),
+    });
+  };
+
+  const clearTournamentWinner = async () => {
+    await fetch(`/api/tournament/${tournamentId}/winner`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        winnerId: null,
+      }),
+    });
+  };
+
+  const clearDownstreamWinners = async (startRound: number, startMatchIndex: number) => {
+    const deletes: Promise<Response>[] = [];
+    let round = startRound + 1;
+    let matchIndex = Math.floor(startMatchIndex / 2);
+
+    while (round < rounds) {
+      deletes.push(deleteMatchWinner(round, matchIndex));
+      matchIndex = Math.floor(matchIndex / 2);
+      round += 1;
+    }
+
+    if (deletes.length) {
+      await Promise.all(deletes);
+    }
+
+    await clearTournamentWinner();
   };
 
   const handleCancelWinner = async (round: number, matchIndex: number) => {
+    startUpdating();
+    applyOptimisticCancel(round, matchIndex);
     try {
-      const res = await fetch("/api/match/update", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tournamentId, round, matchIndex }),
-      });
-      if (res.ok) {
-        fetchWinners();
-
-        // ✅ Suppression du winnerId dans Tournament si c'était la finale
-        if (round === rounds - 1) {
-          await fetch(`/api/tournament/${tournamentId}/winner`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              winnerId: null,
-            }),
-          });
-        }
+      const res = await deleteMatchWinner(round, matchIndex);
+      if (!res.ok) throw new Error("Annulation impossible");
+      if (round < rounds - 1) {
+        await clearDownstreamWinners(round, matchIndex);
+      } else {
+        await clearTournamentWinner();
       }
     } catch (err) {
       console.error("Erreur lors de l'annulation du gagnant:", err);
+    } finally {
+      const stillUpdating = stopUpdating();
+      if (!stillUpdating) {
+        fetchWinners(true);
+      }
+    }
+  };
+
+  const handleSelectWinner = async (round: number, matchIndex: number, player: Participant) => {
+    const currentWinner = getWinner(round, matchIndex);
+    if (currentWinner?.id === player.id) return;
+
+    startUpdating();
+    applyOptimisticSelection(round, matchIndex, player);
+    try {
+      if (currentWinner) {
+        const res = await deleteMatchWinner(round, matchIndex);
+        if (!res.ok) throw new Error("Impossible de remplacer le gagnant");
+      }
+
+      if (round < rounds - 1) {
+        await clearDownstreamWinners(round, matchIndex);
+      } else if (currentWinner) {
+        await clearTournamentWinner();
+      }
+
+      const isValid = await handleValidateWinner(round, matchIndex, player);
+      if (!isValid) throw new Error("Enregistrement du gagnant impossible");
+    } catch (err) {
+      console.error("Erreur lors du changement de gagnant:", err);
+    } finally {
+      const stillUpdating = stopUpdating();
+      if (!stillUpdating) {
+        fetchWinners(true);
+      }
     }
   };
 
@@ -134,279 +258,200 @@ export default function TournamentBracket({ participants, isCreator = false, tou
     if (round0Ref.current) setRoundHeight(round0Ref.current.clientHeight);
   }, [participants]);
 
+  const championObj = getWinner(rounds - 1, 0);
+  const hasChampion = championObj && championObj.pseudo !== "?";
+
   return (
-    <div className="relative min-h-[700px] bg-gradient-to-br from-[#0a0b0d] via-[#1a1c1f] to-[#2a1a3a] rounded-3xl p-8 overflow-x-auto overflow-y-hidden border border-[#8F60D0]/20 shadow-2xl">
-      
-      {/* Fond avec effets visuels premium */}
-      <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(143,96,208,0.03)_50%,transparent_75%)] bg-[length:20px_20px] animate-pulse" />
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#8F60D0]/5 to-transparent opacity-50" />
-      
-      {/* Particules décoratives */}
-      <div className="absolute top-4 left-8 w-2 h-2 bg-[#8F60D0] rounded-full animate-ping" />
-      <div className="absolute top-12 right-12 w-1 h-1 bg-purple-400 rounded-full animate-ping" style={{ animationDelay: '0.5s' }} />
-      <div className="absolute bottom-8 left-16 w-1.5 h-1.5 bg-cyan-400 rounded-full animate-ping" style={{ animationDelay: '1s' }} />
-      <div className="absolute bottom-16 right-8 w-1 h-1 bg-yellow-400 rounded-full animate-ping" style={{ animationDelay: '1.5s' }} />
+    <div className="flex flex-col gap-4">
+      {hasChampion && championObj && (
+        <div className="rounded-2xl border border-[#8F60D0]/30 bg-gradient-to-r from-[#1c1d1f] via-[#222327] to-[#1c1d1f] px-5 py-4 shadow-lg">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#8F60D0]/50 bg-[#8F60D0]/15 text-[#DCCEFF]">
+                <Trophy className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.35em] text-slate-400">Champion du tournoi</div>
+                <div className="text-xl font-semibold text-white">{championObj.pseudo}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/30 px-4 py-2">
+              <div className="h-10 w-10 overflow-hidden rounded-full border border-[#8F60D0]/50">
+                <Image
+                  src={championObj.avatarUrl || championObj.avatar || `https://api.dicebear.com/9.x/lorelei/png?seed=${encodeURIComponent(championObj.pseudo)}`}
+                  alt={championObj.pseudo}
+                  width={40}
+                  height={40}
+                  className="object-cover"
+                />
+              </div>
+              <div className="text-sm text-[#DCCEFF]">Gagnant officiel</div>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="relative flex items-start justify-center gap-16 min-w-fit py-8" ref={round0Ref}>
-        {Array.from({ length: rounds }).map((_, roundIndex) => {
-          const matchCount = roundIndex === 0 ? totalSlots / 2 : Math.max(1, totalSlots / Math.pow(2, roundIndex + 1));
-          const spacing = Math.pow(2, roundIndex);
-          const isFirstRound = roundIndex === 0;
-          const isSecondRound = roundIndex === 1;
-          const isFinalRound = roundIndex === rounds - 1;
-          const matchHeight = roundHeight ? roundHeight / Math.pow(2, roundIndex) : 'auto';
+      <div className="bracket-scroll relative min-h-[700px] rounded-2xl border border-[#8F60D0]/20 bg-gradient-to-br from-[#1c1d1f] to-[#2a2b2f] p-6 shadow-xl overflow-x-auto overflow-y-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(143,96,208,0.15),_transparent_60%)]" />
 
-          return (
-            <div key={roundIndex} className="relative flex flex-col items-center">
-              
-              {/* Header du round avec style premium */}
-              <div className="mb-8 relative">
-                <div className="absolute inset-0 bg-gradient-to-r from-[#8F60D0] to-purple-500 rounded-full blur-lg opacity-30 animate-pulse" />
-                <div className="relative bg-gradient-to-r from-[#8F60D0] to-purple-500 p-[2px] rounded-full">
-                  <div className="bg-gradient-to-r from-[#1a1c1f] to-[#2a1a3a] px-6 py-3 rounded-full">
-                    <h3 className="text-transparent bg-gradient-to-r from-white via-purple-200 to-[#8F60D0] bg-clip-text font-bold text-lg tracking-wider uppercase">
-                      {getRoundName(roundIndex, rounds)}
-                    </h3>
+        <div className="relative flex items-start justify-center gap-12 min-w-fit py-4" ref={round0Ref}>
+          {Array.from({ length: rounds }).map((_, roundIndex) => {
+            const matchCount = roundIndex === 0 ? totalSlots / 2 : Math.max(1, totalSlots / Math.pow(2, roundIndex + 1));
+            const spacing = Math.pow(2, roundIndex);
+            const isFirstRound = roundIndex === 0;
+            const matchHeight = roundHeight ? roundHeight / Math.pow(2, roundIndex) : "auto";
+
+            return (
+              <div key={roundIndex} className="relative flex flex-col items-center">
+                <div className="mb-5">
+                  <div className="inline-flex items-center rounded-full border border-[#8F60D0]/40 bg-[#8F60D0]/10 px-4 py-2 text-xs uppercase tracking-[0.25em] text-[#DCCEFF]">
+                    {getRoundName(roundIndex, rounds)}
                   </div>
                 </div>
-                {isFinalRound && (
-                  <div className="absolute -top-2 -right-2">
-                    <Crown className="w-8 h-8 text-yellow-400 animate-bounce" />
-                  </div>
-                )}
-              </div>
 
-              {/* Matches */}
-              <div className="flex flex-col gap-8" style={{ minHeight: matchHeight }}>
-                {Array.from({ length: matchCount }).map((_, matchIndex) => {
-                  const playerIndex = matchIndex * spacing * 2;
-                  const playerA = isFirstRound ? paddedParticipants[playerIndex] : getWinner(roundIndex - 1, matchIndex * 2);
-                  const playerB = isFirstRound ? paddedParticipants[playerIndex + spacing] : getWinner(roundIndex - 1, matchIndex * 2 + 1);
+                <div className="flex flex-col gap-6" style={{ minHeight: matchHeight }}>
+                  {Array.from({ length: matchCount }).map((_, matchIndex) => {
+                    const playerIndex = matchIndex * spacing * 2;
+                    const playerA = isFirstRound ? paddedParticipants[playerIndex] : getWinner(roundIndex - 1, matchIndex * 2);
+                    const playerB = isFirstRound ? paddedParticipants[playerIndex + spacing] : getWinner(roundIndex - 1, matchIndex * 2 + 1);
 
-                  const isAInvalid = !playerA || playerA.pseudo === "?" || playerA.isDeleted;
-                  const isBInvalid = !playerB || playerB.pseudo === "?" || playerB.isDeleted;
-                  if (isAInvalid && isBInvalid) return null;
+                    const isAInvalid = !playerA || playerA.pseudo === "?" || playerA.isDeleted;
+                    const isBInvalid = !playerB || playerB.pseudo === "?" || playerB.isDeleted;
+                    if (isAInvalid && isBInvalid) return null;
 
-                  const winnerObj = getWinner(roundIndex, matchIndex);
-                  const winnerExists = !!winnerObj;
+                    const winnerObj = getWinner(roundIndex, matchIndex);
+                    const winnerExists = !!winnerObj;
 
-                  // Auto-qualification
-                  if (isCreator && !winnerExists && isRoundComplete(roundIndex - 1)) {
-                    if (!isAInvalid && isBInvalid) handleValidateWinner(roundIndex, matchIndex, playerA!);
-                    if (!isBInvalid && isAInvalid) handleValidateWinner(roundIndex, matchIndex, playerB!);
-                  }
+                    if (isCreator && !winnerExists && isRoundComplete(roundIndex - 1)) {
+                      if (!isAInvalid && isBInvalid) handleSelectWinner(roundIndex, matchIndex, playerA!);
+                      if (!isBInvalid && isAInvalid) handleSelectWinner(roundIndex, matchIndex, playerB!);
+                    }
 
-                  return (
-                    <div key={matchIndex} className="relative">
-                      
-                      {/* Match Container Premium */}
-                      <div className="relative bg-gradient-to-r from-[#1c1d1f]/90 to-[#2a2b2f]/90 p-[2px] rounded-2xl shadow-2xl backdrop-blur-sm border border-[#8F60D0]/20 hover:border-[#8F60D0]/40 transition-all duration-500">
-                        
-                        {/* Glow effect */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-[#8F60D0]/10 to-purple-500/10 rounded-2xl blur-sm opacity-0 hover:opacity-100 transition-opacity duration-500" />
-                        
-                        <div className="relative bg-gradient-to-br from-[#1a1c1f] via-[#1c1d1f] to-[#2a1a3a] rounded-2xl p-4 space-y-3">
-                          
-                          {/* VS Badge */}
-                          <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
-                            <div className="bg-gradient-to-r from-[#8F60D0] to-purple-500 p-2 rounded-full border-2 border-white/20">
-                              <span className="text-white font-bold text-xs">VS</span>
-                            </div>
+                    const renderPlayerRow = (
+                      player: Participant | null,
+                      isWinner: boolean,
+                      isLoser: boolean,
+                      isPlaceholder: boolean,
+                      qualifiesByDefault: boolean
+                    ) => {
+                      const isMissing = !!player?.isDeleted;
+                      const name = isMissing
+                        ? "Utilisateur introuvable"
+                        : isPlaceholder
+                        ? "En attente..."
+                        : player?.pseudo || "Inconnu";
+
+                      const rowTone = isWinner
+                        ? "border-[#8F60D0]/60 bg-[#8F60D0]/15 text-white"
+                        : isMissing
+                        ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
+                        : isLoser
+                        ? "border-white/10 bg-black/30 text-slate-400"
+                        : isPlaceholder
+                        ? "border-white/10 bg-white/5 text-slate-400"
+                        : "border-white/10 bg-black/20 text-slate-100";
+
+                      const rowAccent = isWinner
+                        ? "border-l-4 border-l-[#8F60D0]"
+                        : isMissing
+                        ? "border-l-4 border-l-rose-500/60"
+                        : "border-l-4 border-l-transparent";
+
+                      const avatarStyle = isWinner
+                        ? "border-[#8F60D0]/60"
+                        : isMissing
+                        ? "border-rose-500/50"
+                        : "border-white/20";
+
+                      return (
+                        <div className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${rowTone} ${rowAccent}`}>
+                          <div className={`relative h-9 w-9 overflow-hidden rounded-full border ${avatarStyle}`}>
+                            {player && !isPlaceholder && !player.isDeleted ? (
+                              <Image
+                                src={player.avatarUrl || player.avatar || `https://api.dicebear.com/9.x/lorelei/png?seed=${encodeURIComponent(player.pseudo)}`}
+                                alt={player.pseudo}
+                                fill
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-black/40 text-slate-400">
+                                <span className="text-sm">?</span>
+                              </div>
+                            )}
                           </div>
 
-                          {/* Players */}
-                          {[playerA, playerB].map((player, playerIndex) => {
-                            const isWinner = winnerObj?.id === player?.id;
-                            const isPlaceholder = player?.pseudo === "?";
-                            const isLoser = winnerExists && !isWinner;
-                            const qualifiesByDefault = !player?.isDeleted && 
-                              ((playerA?.pseudo === "?" && player === playerB) || 
-                               (playerB?.pseudo === "?" && player === playerA));
+                          <div className="min-w-0 flex-1">
+                            <div className={`truncate text-sm font-semibold ${isLoser ? "line-through text-slate-400" : ""}`}>
+                              {name}
+                            </div>
+                            {qualifiesByDefault && <div className="text-[11px] text-slate-400">Auto-qualifie</div>}
+                          </div>
 
-                            return (
-                              <div
-                                key={playerIndex}
-                                className={`relative p-4 rounded-xl transition-all duration-500 ${
-                                  isWinner 
-                                    ? "bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-2 border-green-400/50 shadow-lg shadow-green-400/20" 
-                                    : isLoser
-                                    ? "bg-gradient-to-r from-gray-800/50 to-gray-700/50 opacity-60 border border-gray-600/30"
-                                    : isPlaceholder
-                                    ? "bg-gradient-to-r from-gray-600/30 to-gray-700/30 border border-gray-500/30"
-                                    : "bg-gradient-to-r from-[#8F60D0]/20 to-purple-500/20 border border-[#8F60D0]/30 hover:border-[#8F60D0]/50"
-                                }`}
-                              >
-                                
-                                {/* Winner Crown */}
-                                {isWinner && (
-                                  <div className="absolute -top-3 -right-3 bg-gradient-to-r from-yellow-400 to-orange-500 p-2 rounded-full animate-bounce shadow-lg">
-                                    <Crown className="w-4 h-4 text-white" />
-                                  </div>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`min-w-[88px] rounded-full border px-2 py-0.5 text-center text-[10px] uppercase tracking-[0.2em] ${
+                                isWinner ? "border-[#8F60D0]/50 text-[#DCCEFF]" : "border-white/10 text-slate-400"
+                              }`}
+                            >
+                              {isWinner ? "Gagnant" : "Qualifie"}
+                            </div>
+
+                            {isCreator && !isPlaceholder && player && !player.isDeleted && (
+                              <div className="flex items-center gap-1">
+                                {(!winnerExists || !isWinner) && (
+                                  <button
+                                    onClick={() => handleSelectWinner(roundIndex, matchIndex, player)}
+                                    className="rounded border border-[#8F60D0]/40 px-1.5 py-1 text-[#DCCEFF] transition hover:border-[#8F60D0] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                    title={winnerExists ? "Changer le gagnant" : "Designer comme gagnant"}
+                                    aria-label={winnerExists ? "Changer le gagnant" : "Designer comme gagnant"}
+                                  >
+                                    <Check className="h-4 w-4" />
+                                  </button>
                                 )}
-
-                                <div className="flex items-center gap-3">
-                                  
-                                  {/* Avatar */}
-                                  <div className={`relative w-12 h-12 rounded-full overflow-hidden border-2 ${
-                                    isWinner ? "border-green-400" : isLoser ? "border-gray-500" : "border-[#8F60D0]"
-                                  } ${isLoser ? "grayscale" : ""} transition-all duration-300`}>
-                                    {player && !isPlaceholder && !player.isDeleted ? (
-                                      <Image
-                                        src={player.avatar || `https://api.dicebear.com/9.x/lorelei/png?seed=${encodeURIComponent(player.pseudo)}`}
-                                        alt={player.pseudo}
-                                        fill
-                                        className="object-cover"
-                                      />
-                                    ) : (
-                                      <div className="w-full h-full bg-gradient-to-br from-gray-600 to-gray-800 flex items-center justify-center">
-                                        <span className="text-2xl">?</span>
-                                      </div>
-                                    )}
-                                    
-                                    {/* Status overlay */}
-                                    {isLoser && (
-                                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                        <X className="w-6 h-6 text-red-400" />
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {/* Player Info */}
-                                  <div className="flex-1 min-w-0">
-                                    <div className={`font-semibold truncate ${
-                                      isWinner ? "text-green-300" :
-                                      isLoser ? "text-gray-400" :
-                                      isPlaceholder ? "text-gray-500" :
-                                      player?.isDeleted ? "text-red-400" :
-                                      "text-white"
-                                    }`}>
-                                      {player?.isDeleted ? "Utilisateur introuvable" : 
-                                       isPlaceholder ? "En attente..." : 
-                                       player?.pseudo || "Inconnu"}
-                                    </div>
-                                    
-                                    {qualifiesByDefault && (
-                                      <div className="text-xs text-cyan-400 flex items-center gap-1 mt-1">
-                                        <Zap className="w-3 h-3" />
-                                        Qualifié automatiquement
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {/* Winner badge */}
-                                  {isWinner && (
-                                    <div className="bg-gradient-to-r from-green-500 to-emerald-500 px-2 py-1 rounded-full">
-                                      <span className="text-white text-xs font-bold">WINNER</span>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Admin Controls */}
-                                {isCreator && !isPlaceholder && player && !player.isDeleted && (
-                                  <div className="absolute top-2 right-2 flex gap-1">
-                                    {!winnerExists && (
-                                      <button
-                                        onClick={() => handleValidateWinner(roundIndex, matchIndex, player)}
-                                        className="bg-green-500/80 hover:bg-green-500 p-2 rounded-full transition-all duration-200 shadow-lg hover:shadow-green-500/20"
-                                        title="Désigner comme gagnant"
-                                      >
-                                        <Check className="w-4 h-4 text-white" />
-                                      </button>
-                                    )}
-                                    {isWinner && (
-                                      <button
-                                        onClick={() => handleCancelWinner(roundIndex, matchIndex)}
-                                        className="bg-red-500/80 hover:bg-red-500 p-2 rounded-full transition-all duration-200 shadow-lg hover:shadow-red-500/20"
-                                        title="Annuler la victoire"
-                                      >
-                                        <X className="w-4 h-4 text-white" />
-                                      </button>
-                                    )}
-                                  </div>
+                                {isWinner && (
+                                  <button
+                                    onClick={() => handleCancelWinner(roundIndex, matchIndex)}
+                                    className="rounded border border-rose-500/40 px-1.5 py-1 text-rose-300 transition hover:border-rose-400 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
+                                    title="Annuler la victoire"
+                                    aria-label="Annuler la victoire"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
                                 )}
                               </div>
-                            );
-                          })}
+                            )}
+                          </div>
+                        </div>
+                      );
+                    };
+
+                    const isWinnerA = winnerObj?.id === playerA?.id;
+                    const isWinnerB = winnerObj?.id === playerB?.id;
+                    const isPlaceholderA = playerA?.pseudo === "?";
+                    const isPlaceholderB = playerB?.pseudo === "?";
+                    const isLoserA = winnerExists && !isWinnerA;
+                    const isLoserB = winnerExists && !isWinnerB;
+                    const qualifiesA = !playerA?.isDeleted && isBInvalid && !isAInvalid;
+                    const qualifiesB = !playerB?.isDeleted && isAInvalid && !isBInvalid;
+
+                    return (
+                      <div key={matchIndex} className="relative">
+                        <div className="rounded-xl border border-white/10 bg-[#8F60D0]/10 p-3">
+                          <div className="flex flex-col gap-2">
+                            {renderPlayerRow(playerA, isWinnerA, isLoserA, isPlaceholderA, qualifiesA)}
+                            <div className="text-center text-[11px] uppercase tracking-[0.3em] text-slate-400">vs</div>
+                            {renderPlayerRow(playerB, isWinnerB, isLoserB, isPlaceholderB, qualifiesB)}
+                          </div>
                         </div>
                       </div>
-
-                      {/* Connection Line to Next Round */}
-                      {roundIndex < rounds - 1 && winnerExists && (
-                        <div className="absolute top-1/2 -right-8 w-16 h-0.5 bg-gradient-to-r from-[#8F60D0] to-purple-500 transform -translate-y-1/2">
-                          <div className="absolute right-0 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-[#8F60D0] rounded-full animate-pulse" />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-
-      {/* Championship Winner Display */}
-      {(() => {
-        const championObj = getWinner(rounds - 1, 0);
-        if (championObj && championObj.pseudo !== "?") {
-          return (
-            <div className="absolute top-8 right-8 max-w-sm">
-              <div className="relative p-6 bg-gradient-to-r from-[#8F60D0]/20 via-purple-500/20 to-yellow-500/20 rounded-3xl border-2 border-yellow-400/50 shadow-2xl backdrop-blur-sm">
-                
-                {/* Crown Animation */}
-                <div className="absolute -top-6 left-1/2 transform -translate-x-1/2">
-                  <div className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-orange-500 p-4 rounded-full border-4 border-white/20 animate-bounce shadow-2xl">
-                    <Trophy className="w-8 h-8 text-white" />
-                  </div>
-                </div>
-
-                {/* Glow Effects */}
-                <div className="absolute inset-0 bg-gradient-to-r from-[#8F60D0]/30 via-purple-500/30 to-yellow-500/30 rounded-3xl blur-xl opacity-60 animate-pulse" />
-                
-                <div className="relative text-center pt-8">
-                  <div className="text-transparent bg-gradient-to-r from-yellow-300 via-yellow-400 to-orange-500 bg-clip-text font-black text-xl mb-2">
-                    CHAMPION DU TOURNOI
-                  </div>
-                  
-                  <div className="flex items-center justify-center gap-4 mb-4">
-                    <div className="w-16 h-16 rounded-full overflow-hidden border-4 border-yellow-400">
-                      <Image
-                        src={championObj.avatar || `https://api.dicebear.com/9.x/lorelei/png?seed=${encodeURIComponent(championObj.pseudo)}`}
-                        alt={championObj.pseudo}
-                        width={64}
-                        height={64}
-                        className="object-cover"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="text-2xl font-bold text-transparent bg-gradient-to-r from-white via-yellow-200 to-[#8F60D0] bg-clip-text mb-3">
-                    {championObj.pseudo}
-                  </div>
-                  
-                  <div className="flex justify-center gap-1">
-                    {[...Array(5)].map((_, i) => (
-                      <Award
-                        key={i}
-                        className="w-5 h-5 text-yellow-400 animate-pulse"
-                        style={{ animationDelay: `${i * 0.1}s` }}
-                        fill="currentColor"
-                      />
-                    ))}
-                  </div>
-
-                  {/* Confetti Effect */}
-                  <div className="absolute top-4 left-4 w-2 h-2 bg-yellow-400 rounded-full animate-ping" />
-                  <div className="absolute top-8 right-6 w-1 h-1 bg-purple-400 rounded-full animate-ping" style={{ animationDelay: '0.2s' }} />
-                  <div className="absolute bottom-8 left-6 w-1.5 h-1.5 bg-cyan-400 rounded-full animate-ping" style={{ animationDelay: '0.4s' }} />
-                  <div className="absolute bottom-4 right-4 w-1 h-1 bg-orange-400 rounded-full animate-ping" style={{ animationDelay: '0.6s' }} />
-                </div>
-              </div>
-            </div>
-          );
-        }
-        return null;
-      })()}
     </div>
   );
 }

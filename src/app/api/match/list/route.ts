@@ -18,6 +18,7 @@ export async function GET(req: Request) {
             id: true,
             pseudo: true,
             isDeleted: true,
+            avatarUrl: true,
           },
         },
       },
@@ -30,6 +31,7 @@ export async function GET(req: Request) {
         ? {
             id: match.winner.id,
             pseudo: match.winner.isDeleted ? "Utilisateur introuvable" : match.winner.pseudo,
+            avatarUrl: match.winner.avatarUrl || null,
           }
         : null,
     }));
