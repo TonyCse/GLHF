@@ -11,20 +11,35 @@ interface TokensInfo {
   plan: string;
 }
 
-export default function TournamentTokensWidget() {
+interface TournamentTokensWidgetProps {
+  initialTokensInfo?: TokensInfo | null;
+  show?: boolean;
+}
+
+export default function TournamentTokensWidget({
+  initialTokensInfo = null,
+  show,
+}: TournamentTokensWidgetProps) {
   const { data: session } = useSession();
-  const [tokensInfo, setTokensInfo] = useState<TokensInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+  const shouldShow = show ?? !!session;
+  const [tokensInfo, setTokensInfo] = useState<TokensInfo | null>(initialTokensInfo);
+  const [loading, setLoading] = useState(shouldShow && !initialTokensInfo);
 
   useEffect(() => {
-    if (!session) {
+    if (!shouldShow) {
+      setLoading(false);
+      return;
+    }
+
+    if (initialTokensInfo) {
+      setTokensInfo(initialTokensInfo);
       setLoading(false);
       return;
     }
 
     const fetchTokensInfo = async () => {
       try {
-        const response = await fetch('/api/user/tokens');
+        const response = await fetch('/api/user/tokens', { cache: "no-store" });
         const data = await response.json();
         
         if (data.success) {
@@ -38,9 +53,9 @@ export default function TournamentTokensWidget() {
     };
 
     fetchTokensInfo();
-  }, [session]);
+  }, [initialTokensInfo, shouldShow, session]);
 
-  if (!session) {
+  if (!shouldShow) {
     return null;
   }
 
@@ -99,7 +114,7 @@ export default function TournamentTokensWidget() {
 
           {isOutOfTokens && (
             <div className="text-xs text-red-300 mt-1">
-              Plus de tokens ! <a href="/plan" className="underline hover:text-red-200">Upgrade ton plan</a>
+              Plus de tokens ! <a href="/abonnements" className="underline hover:text-red-200">Upgrade ton plan</a>
             </div>
           )}
           
@@ -113,4 +128,5 @@ export default function TournamentTokensWidget() {
     </div>
   );
 }
+
 

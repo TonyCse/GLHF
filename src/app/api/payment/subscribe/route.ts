@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { cancelPaypalSubscription, createPaypalSubscription } from "@/lib/paypal";
 
 export async function POST(req: Request) {
   const session = await auth();
-  
-  if (!session?.user?.email) {
+
+  if (!session?.user?.email || !session.user.id) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
@@ -13,73 +14,84 @@ export async function POST(req: Request) {
     const { planId } = await req.json();
 
     if (!planId) {
+      return NextResponse.json({ error: "ID du plan requis" }, { status: 400 });
+    }
+
+    const plan = await prisma.plan.findUnique({
+      where: { id: Number(planId) },
+    });
+
+    if (!plan) {
+      return NextResponse.json({ error: "Plan introuvable" }, { status: 404 });
+    }
+
+    const userId = Number(session.user.id);
+    if (!userId) {
+      return NextResponse.json({ error: "Utilisateur invalide" }, { status: 400 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { paypalSubscriptionId: true },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
+    }
+
+    // ✅ PLAN GRATUIT
+    if (plan.priceCents === 0) {
+      if (user.paypalSubscriptionId) {
+        await cancelPaypalSubscription(
+          user.paypalSubscriptionId,
+          "User requested cancellation"
+        );
+      }
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          planId: plan.id,
+          tokensUsedThisMonth: 0,
+          tokensMonthStart: new Date(),
+          paypalSubscriptionId: null,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        redirectUrl: "/profil",
+      });
+    }
+
+    if (!plan.paypalPlanId) {
       return NextResponse.json(
-        { error: "ID du plan requis" },
+        { error: "Plan PayPal manquant" },
         { status: 400 }
       );
     }
 
-    // Vérifier que le plan existe
-    const plan = await prisma.plan.findUnique({
-      where: { id: parseInt(planId) },
-    });
-
-    if (!plan) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!appUrl) {
       return NextResponse.json(
-        { error: "Plan introuvable" },
-        { status: 404 }
-      );
-    }
-
-    // Pour le plan gratuit, pas besoin de PayPal
-    if (plan.priceCents === 0) {
-      const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-      });
-
-      if (user) {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { planId: plan.id },
-        });
-
-        return NextResponse.json({
-          success: true,
-          message: "Plan gratuit activé",
-          redirectUrl: "/profil",
-        });
-      }
-    }
-
-    // Pour les plans payants, créer l'URL de paiement PayPal
-    const paypalClientId = process.env.PAYPAL_CLIENT_ID;
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-
-    if (!paypalClientId) {
-      return NextResponse.json(
-        { error: "Configuration PayPal manquante" },
+        { error: "NEXT_PUBLIC_APP_URL manquant" },
         { status: 500 }
       );
     }
 
-    // Créer une URL de paiement simple (pour l'instant)
-    // Dans un vrai projet, il faudrait utiliser l'API PayPal pour créer des abonnements
-    const paypalUrl = `https://www.sandbox.paypal.com/cgi-bin/webscr?cmd=_xclick-subscriptions&business=${paypalClientId}&item_name=${encodeURIComponent(plan.name)}&a3=${plan.priceCents/100}&p3=1&t3=M&src=1&sra=1&return=${encodeURIComponent(baseUrl + '/api/payment/success')}&cancel_return=${encodeURIComponent(baseUrl + '/plan')}`;
-
-    return NextResponse.json({
-      success: true,
-      paypalUrl,
-      plan: {
-        name: plan.name,
-        price: plan.priceCents / 100,
-        tokensPerMonth: plan.tokensPerMonth,
-      },
+    const { approvalUrl } = await createPaypalSubscription({
+      paypalPlanId: plan.paypalPlanId,
+      returnUrl: `${appUrl}/abonnements/success`,
+      cancelUrl: `${appUrl}/abonnements/cancel`,
+      customId: String(userId),
     });
 
+    return NextResponse.json({ success: true, approvalUrl });
+
   } catch (error) {
-    console.error("Erreur lors de la création de l'abonnement:", error);
+    console.error("subscribe error:", error);
     return NextResponse.json(
-      { error: "Erreur serveur" },
+      { error: "Erreur serveur subscribe" },
       { status: 500 }
     );
   }

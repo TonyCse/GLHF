@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { cancelPaypalSubscription } from "@/lib/paypal";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -9,12 +10,38 @@ export async function POST(req: Request) {
   }
 
   try {
+    const userId = Number(session.user.id);
+    if (!userId) {
+      return NextResponse.json({ error: "Utilisateur invalide" }, { status: 400 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { paypalSubscriptionId: true },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
+    }
+
+    if (user.paypalSubscriptionId) {
+      await cancelPaypalSubscription(
+        user.paypalSubscriptionId,
+        "User requested cancellation"
+      );
+    }
+
+    const freePlan = await prisma.plan.findFirst({
+      where: { priceCents: 0 },
+    });
+
     await prisma.user.update({
-      where: { id: Number(session.user.id) },
+      where: { id: userId },
       data: {
-        planId: null,
+        planId: freePlan?.id ?? null,
         tokensUsedThisMonth: 0,
-        tokensMonthStart: null,
+        tokensMonthStart: freePlan ? new Date() : null,
+        paypalSubscriptionId: null,
       },
     });
 

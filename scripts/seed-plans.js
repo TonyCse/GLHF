@@ -5,28 +5,25 @@ async function main() {
   try {
     const plansData = [
       {
-        name: 'GLHF Chill',
-        slug: 'glhf-chill',
+        name: 'Plan Bronze',
+        slug: 'bronze',
         priceCents: 99,
         currency: 'EUR',
-        tokensPerWeek: 1,
-        paypalPlanId: null,
+        tokensPerMonth: 5,
       },
       {
-        name: 'GLHF Tryhard',
-        slug: 'glhf-tryhard',
+        name: 'Plan Argent',
+        slug: 'silver',
+        priceCents: 149,
+        currency: 'EUR',
+        tokensPerMonth: 8,
+      },
+      {
+        name: 'Plan Or',
+        slug: 'gold',
         priceCents: 199,
         currency: 'EUR',
-        tokensPerWeek: 3,
-        paypalPlanId: null,
-      },
-      {
-        name: 'GLHF Legend',
-        slug: 'glhf-legend',
-        priceCents: 299,
-        currency: 'EUR',
-        tokensPerWeek: 8,
-        paypalPlanId: null,
+        tokensPerMonth: 30,
       },
     ];
 
@@ -37,8 +34,7 @@ async function main() {
           name: p.name,
           priceCents: p.priceCents,
           currency: p.currency,
-          tokensPerWeek: p.tokensPerWeek,
-          paypalPlanId: p.paypalPlanId,
+          tokensPerMonth: p.tokensPerMonth,
         },
         create: p,
       });
@@ -48,12 +44,12 @@ async function main() {
     const all = await prisma.plan.findMany({ orderBy: { priceCents: 'asc' } });
     console.log('\nPlans now in DB:', all.length);
     console.table(
-      all.map(a => ({
+      all.map((a) => ({
         id: a.id,
         name: a.name,
         slug: a.slug,
-        price: (a.priceCents / 100).toFixed(2) + '€',
-        tokens: a.tokensPerWeek,
+        price: (a.priceCents / 100).toFixed(2) + ' EUR',
+        tokens: a.tokensPerMonth,
       }))
     );
   } catch (e) {

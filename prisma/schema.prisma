@@ -76,6 +76,7 @@ model User {
   tokensMonthStart    DateTime?
   planId             Int?
   plan               Plan?        @relation(fields: [planId], references: [id])
+  paypalSubscriptionId String?
 
   matchHistory       Match[]      @relation("PlayerMatches")
   matchesWonList     Match[]      @relation("MatchWinner")
@@ -109,4 +110,5 @@ enum Game {
 enum Role {
   USER
   ADMIN
+  SUPER_ADMIN
 }

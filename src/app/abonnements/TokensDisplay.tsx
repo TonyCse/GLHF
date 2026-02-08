@@ -15,6 +15,7 @@ interface User {
 
 interface TokensDisplayProps {
   user: User;
+  initialTokensInfo?: TokensInfo | null;
 }
 
 interface TokensInfo {
@@ -22,31 +23,37 @@ interface TokensInfo {
   usedTokens: number;
   totalTokensThisMonth: number;
   plan: string;
-  monthStart?: Date;
+  monthStart?: string | Date | null;
 }
 
-export default function TokensDisplay({ user }: TokensDisplayProps) {
-  const [tokensInfo, setTokensInfo] = useState<TokensInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function TokensDisplay({ user, initialTokensInfo = null }: TokensDisplayProps) {
+  const [tokensInfo, setTokensInfo] = useState<TokensInfo | null>(initialTokensInfo);
+  const [loading, setLoading] = useState(!initialTokensInfo);
 
   useEffect(() => {
+    if (initialTokensInfo) {
+      setTokensInfo(initialTokensInfo);
+      setLoading(false);
+      return;
+    }
+
     const fetchTokensInfo = async () => {
       try {
-        const response = await fetch('/api/user/tokens');
+        const response = await fetch("/api/user/tokens", { cache: "no-store" });
         const data = await response.json();
-        
+
         if (data.success) {
           setTokensInfo(data.data);
         }
       } catch (error) {
-        console.error('Erreur lors de la récupération des tokens:', error);
+        console.error("Erreur lors de la recuperation des tokens:", error);
       } finally {
         setLoading(false);
       }
     };
 
     fetchTokensInfo();
-  }, []);
+  }, [initialTokensInfo]);
 
   if (loading) {
     return (
@@ -66,7 +73,10 @@ export default function TokensDisplay({ user }: TokensDisplayProps) {
     return null;
   }
 
-  const percentageUsed = (tokensInfo.usedTokens / tokensInfo.totalTokensThisMonth) * 100;
+  const percentageUsed =
+    tokensInfo.totalTokensThisMonth > 0
+      ? (tokensInfo.usedTokens / tokensInfo.totalTokensThisMonth) * 100
+      : 0;
 
   return (
     <div className="bg-[#1c1d1f] rounded-2xl p-6 border border-[#2a2c30] max-w-md mx-auto">
@@ -80,55 +90,45 @@ export default function TokensDisplay({ user }: TokensDisplayProps) {
         </div>
       </div>
 
-      {/* Barre de progression */}
       <div className="mb-4">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-sm text-gray-400">Tokens utilisés ce mois</span>
+          <span className="text-sm text-gray-400">Tokens utilises ce mois</span>
           <span className="text-sm font-medium text-white">
             {tokensInfo.usedTokens} / {tokensInfo.totalTokensThisMonth}
           </span>
         </div>
-        
+
         <div className="w-full bg-gray-700 rounded-full h-3">
-          <div 
+          <div
             className="bg-gradient-to-r from-[#8F60D0] to-[#A855F7] h-3 rounded-full transition-all duration-300"
             style={{ width: `${Math.min(percentageUsed, 100)}%` }}
-          ></div>
+          />
         </div>
       </div>
 
-      {/* Statistiques */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-[#232426] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-green-400">
-            {tokensInfo.remainingTokens}
-          </div>
+          <div className="text-2xl font-bold text-green-400">{tokensInfo.remainingTokens}</div>
           <div className="text-sm text-gray-400">Restants</div>
         </div>
-        
+
         <div className="bg-[#232426] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-blue-400">
-            {tokensInfo.totalTokensThisMonth}
-          </div>
+          <div className="text-2xl font-bold text-blue-400">{tokensInfo.totalTokensThisMonth}</div>
           <div className="text-sm text-gray-400">Par mois</div>
         </div>
       </div>
 
-      {/* Informations sur le reset */}
       {tokensInfo.monthStart && (
         <div className="mt-4 flex items-center gap-2 text-sm text-gray-400">
           <Clock className="w-4 h-4" />
-          <span>
-            Prochaine recharge: {getNextMonthDate(tokensInfo.monthStart)}
-          </span>
+          <span>Prochaine recharge: {getNextMonthDate(tokensInfo.monthStart)}</span>
         </div>
       )}
 
-      {/* Alert si plus de tokens */}
       {tokensInfo.remainingTokens === 0 && (
         <div className="mt-4 p-3 bg-red-600/10 border border-red-600/30 rounded-lg">
           <p className="text-red-300 text-sm text-center">
-            Plus de tokens ce mois-ci ! Upgrade ton plan pour continuer à jouer.
+            Plus de tokens ce mois-ci ! Upgrade ton plan pour continuer a jouer.
           </p>
         </div>
       )}
@@ -136,13 +136,12 @@ export default function TokensDisplay({ user }: TokensDisplayProps) {
   );
 }
 
-function getNextMonthDate(monthStart: Date): string {
+function getNextMonthDate(monthStart: string | Date): string {
   const nextMonth = new Date(monthStart);
   nextMonth.setMonth(nextMonth.getMonth() + 1);
-  
-  return nextMonth.toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long'
+
+  return nextMonth.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "long",
   });
 }
-

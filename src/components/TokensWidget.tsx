@@ -8,22 +8,33 @@ interface TokensInfo {
   usedTokens: number;
   totalTokensThisMonth: number;
   plan: string;
-  monthStart?: Date;
+  monthStart?: string | Date | null;
 }
 
 interface TokensWidgetProps {
   className?: string;
   compact?: boolean;
+  initialTokensInfo?: TokensInfo | null;
 }
 
-export default function TokensWidget({ className = "", compact = false }: TokensWidgetProps) {
-  const [tokensInfo, setTokensInfo] = useState<TokensInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function TokensWidget({
+  className = "",
+  compact = false,
+  initialTokensInfo = null,
+}: TokensWidgetProps) {
+  const [tokensInfo, setTokensInfo] = useState<TokensInfo | null>(initialTokensInfo);
+  const [loading, setLoading] = useState(!initialTokensInfo);
 
   useEffect(() => {
+    if (initialTokensInfo) {
+      setTokensInfo(initialTokensInfo);
+      setLoading(false);
+      return;
+    }
+
     const fetchTokensInfo = async () => {
       try {
-        const response = await fetch('/api/user/tokens');
+        const response = await fetch('/api/user/tokens', { cache: "no-store" });
         const data = await response.json();
         
         if (data.success) {
@@ -37,7 +48,7 @@ export default function TokensWidget({ className = "", compact = false }: Tokens
     };
 
     fetchTokensInfo();
-  }, []);
+  }, [initialTokensInfo]);
 
   if (loading) {
     return (
@@ -51,7 +62,10 @@ export default function TokensWidget({ className = "", compact = false }: Tokens
     return null;
   }
 
-  const percentageUsed = (tokensInfo.usedTokens / tokensInfo.totalTokensThisMonth) * 100;
+  const percentageUsed =
+    tokensInfo.totalTokensThisMonth > 0
+      ? (tokensInfo.usedTokens / tokensInfo.totalTokensThisMonth) * 100
+      : 0;
 
   if (compact) {
     return (
@@ -131,7 +145,7 @@ export default function TokensWidget({ className = "", compact = false }: Tokens
       {tokensInfo.remainingTokens === 0 && (
         <div className="mt-4 p-3 bg-red-600/10 border border-red-600/30 rounded-lg">
           <p className="text-red-300 text-sm text-center">
-            Plus de tokens ce mois-ci ! <a href="/plan" className="underline hover:text-red-200">Upgrade ton plan</a> pour continuer à jouer.
+            Plus de tokens ce mois-ci ! <a href="/abonnements" className="underline hover:text-red-200">Upgrade ton plan</a> pour continuer à jouer.
           </p>
         </div>
       )}
@@ -139,7 +153,7 @@ export default function TokensWidget({ className = "", compact = false }: Tokens
   );
 }
 
-function getNextMonthDate(monthStart: Date): string {
+function getNextMonthDate(monthStart: string | Date): string {
   const nextMonth = new Date(monthStart);
   nextMonth.setMonth(nextMonth.getMonth() + 1);
   
@@ -148,4 +162,5 @@ function getNextMonthDate(monthStart: Date): string {
     month: 'long'
   });
 }
+
 

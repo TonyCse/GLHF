@@ -25,20 +25,24 @@ export async function GET() {
 
     // Rafraîchir les tokens si nécessaire (nouveau mois)
     const userWithTokens = await refreshUserTokensIfNeeded(user.id);
-    const remainingTokens = getRemainingTokens(userWithTokens);
-    
     const tokensPerMonth = userWithTokens.plan?.tokensPerMonth ?? 3;
-    const usedTokens = userWithTokens.tokensUsedThisMonth;
+    const rawUsedTokens = userWithTokens.tokensUsedThisMonth;
+    const bonusTokens = Math.max(0, -rawUsedTokens);
+    const totalTokensThisMonth = tokensPerMonth + bonusTokens;
+    const usedTokens = Math.min(Math.max(0, rawUsedTokens), totalTokensThisMonth);
+    const remainingTokens = Math.max(0, totalTokensThisMonth - usedTokens);
 
     return NextResponse.json({
       success: true,
       data: {
         remainingTokens,
         usedTokens,
-        totalTokensThisMonth: tokensPerMonth,
+        totalTokensThisMonth,
         plan: userWithTokens.plan?.name ?? "Plan Gratuit",
         monthStart: userWithTokens.tokensMonthStart,
       },
+    }, {
+      headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
     console.error("Erreur lors de la récupération des tokens:", error);
@@ -53,8 +57,8 @@ export async function GET() {
 export async function POST(req: Request) {
   const session = await auth();
   
-  if (!session?.user || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+  if (!session?.user || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
+    return NextResponse.json({ error: "Acces refuse" }, { status: 403 });
   }
 
   try {
@@ -90,4 +94,5 @@ export async function POST(req: Request) {
     );
   }
 }
+
 

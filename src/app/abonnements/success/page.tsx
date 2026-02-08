@@ -2,32 +2,14 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-
-const PAYPAL_BASE_URL = process.env.PAYPAL_BASE_URL!;
-const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID!;
-const PAYPAL_SECRET = process.env.PAYPAL_SECRET!;
-
-async function getAccessToken() {
-  const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_SECRET}`).toString("base64");
-  const res = await fetch(`${PAYPAL_BASE_URL}/v1/oauth2/token`, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${auth}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
-
-  if (!res.ok) throw new Error("Erreur PayPal (token)");
-  const data = await res.json();
-  return data.access_token as string;
-}
+import { getPaypalSubscription } from "@/lib/paypal";
 
 type Props = {
   // ✅ en Next 15, searchParams est une Promise
   searchParams: Promise<{
+    subscription_id?: string;
     token?: string;
-    planId?: string;
+    ba_token?: string;
   }>;
 };
 
@@ -39,38 +21,36 @@ export default async function SuccessPage({ searchParams }: Props) {
 
   // ✅ on "résout" les query params avant de les lire
   const params = await searchParams;
-  const orderId = params.token;
-  const planIdNumber = Number(params.planId);
+  const subscriptionId =
+    params.subscription_id || params.ba_token || params.token;
 
-  if (!orderId || !planIdNumber) {
-    redirect("/abonnements");
+  if (!subscriptionId) {
+    redirect("/abonnements?error=missing_subscription");
   }
 
   try {
-    const accessToken = await getAccessToken();
+    const subscription = await getPaypalSubscription(subscriptionId);
+    const status = subscription?.status as string | undefined;
 
-    const captureRes = await fetch(
-      `${PAYPAL_BASE_URL}/v2/checkout/orders/${orderId}/capture`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    if (status !== "ACTIVE" && status !== "APPROVED") {
+      redirect("/abonnements?error=subscription_status");
+    }
 
-    if (!captureRes.ok) {
-      console.error("Erreur capture PayPal", await captureRes.text());
-      redirect("/abonnements?error=paiement");
+    const plan = await prisma.plan.findFirst({
+      where: { paypalPlanId: subscription?.plan_id },
+    });
+
+    if (!plan) {
+      redirect("/abonnements?error=plan");
     }
 
     await prisma.user.update({
       where: { id: Number(session.user.id) },
       data: {
-        planId: planIdNumber,
+        planId: plan.id,
         tokensUsedThisMonth: 0,
         tokensMonthStart: new Date(),
+        paypalSubscriptionId: subscription.id,
       },
     });
 

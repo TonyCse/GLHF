@@ -65,13 +65,39 @@ async function handleSubscriptionActivated(data: any) {
   // L'abonnement a été activé, activer le plan utilisateur
   const subscriptionId = data.resource.id;
   const customId = data.resource.custom_id; // ID utilisateur que nous aurons passé
-  
+  const planId = data.resource.plan_id;
+
+  let userId: number | null = null;
   if (customId) {
-    const userId = parseInt(customId);
-    // Ici, il faudrait déterminer quel plan correspond à cet abonnement
-    // Pour l'instant, on va supposer que c'est dans les métadonnées
-    console.log("Abonnement activé pour l'utilisateur:", userId);
+    const parsed = parseInt(customId);
+    if (!Number.isNaN(parsed)) userId = parsed;
   }
+
+  if (!userId && subscriptionId) {
+    const user = await prisma.user.findFirst({
+      where: { paypalSubscriptionId: subscriptionId },
+      select: { id: true },
+    });
+    userId = user?.id ?? null;
+  }
+
+  if (!userId || !planId) return;
+
+  const plan = await prisma.plan.findFirst({
+    where: { paypalPlanId: planId },
+  });
+
+  if (!plan) return;
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      planId: plan.id,
+      tokensUsedThisMonth: 0,
+      tokensMonthStart: new Date(),
+      paypalSubscriptionId: subscriptionId,
+    },
+  });
 }
 
 async function handleSubscriptionCancelled(data: any) {
@@ -79,27 +105,38 @@ async function handleSubscriptionCancelled(data: any) {
   const subscriptionId = data.resource.id;
   const customId = data.resource.custom_id;
   
+  let userId: number | null = null;
   if (customId) {
-    const userId = parseInt(customId);
-    
-    // Trouver le plan gratuit
-    const freePlan = await prisma.plan.findFirst({
-      where: { priceCents: 0 }
-    });
-    
-    if (freePlan) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { 
-          planId: freePlan.id,
-          tokensUsedThisMonth: 0,
-          tokensMonthStart: new Date(),
-        },
-      });
-      
-      console.log("Utilisateur remis sur le plan gratuit:", userId);
-    }
+    const parsed = parseInt(customId);
+    if (!Number.isNaN(parsed)) userId = parsed;
   }
+
+  if (!userId && subscriptionId) {
+    const user = await prisma.user.findFirst({
+      where: { paypalSubscriptionId: subscriptionId },
+      select: { id: true },
+    });
+    userId = user?.id ?? null;
+  }
+
+  if (!userId) return;
+
+  // Trouver le plan gratuit
+  const freePlan = await prisma.plan.findFirst({
+    where: { priceCents: 0 },
+  });
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      planId: freePlan?.id ?? null,
+      tokensUsedThisMonth: 0,
+      tokensMonthStart: freePlan ? new Date() : null,
+      paypalSubscriptionId: null,
+    },
+  });
+
+  console.log("Utilisateur remis sur le plan gratuit:", userId);
 }
 
 async function handleSubscriptionSuspended(data: any) {
@@ -114,4 +151,5 @@ async function handlePaymentCompleted(data: any) {
   const paymentAmount = data.resource.amount.total;
   console.log("Paiement PayPal reçu:", paymentAmount);
 }
+
 

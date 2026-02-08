@@ -1,7 +1,6 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import React from "react";
 
 interface Props {
@@ -10,10 +9,9 @@ interface Props {
 }
 
 export default function SubscribeButton({ planId, price }: Props) {
-  const { data: session, status } = useSession();
-  const router = useRouter();
+  const { status } = useSession();
 
-  const handleSubscribe = (e: React.MouseEvent) => {
+  const handleSubscribe = async (e: React.MouseEvent) => {
     e.preventDefault();
 
     if (status !== "authenticated") {
@@ -23,27 +21,28 @@ export default function SubscribeButton({ planId, price }: Props) {
       return;
     }
 
-    // Create a normal form so the browser follows redirects (PayPal approval link)
-    const form = document.createElement("form");
-    form.method = "POST";
-    form.action = "/api/paypal/create-subscription";
+    try {
+      const res = await fetch("/api/payment/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId }),
+      });
 
-    const inputPlan = document.createElement("input");
-    inputPlan.type = "hidden";
-    inputPlan.name = "planId";
-    inputPlan.value = String(planId);
-    form.appendChild(inputPlan);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Erreur lors de la souscription");
+      }
 
-    if (price !== undefined) {
-      const inputPrice = document.createElement("input");
-      inputPrice.type = "hidden";
-      inputPrice.name = "price";
-      inputPrice.value = String(price);
-      form.appendChild(inputPrice);
+      const redirectUrl = data.approvalUrl || data.redirectUrl;
+      if (!redirectUrl) {
+        throw new Error("Redirection manquante");
+      }
+
+      window.location.href = redirectUrl;
+    } catch (error) {
+      console.error("Erreur souscription:", error);
+      alert("Une erreur est survenue. Veuillez réessayer.");
     }
-
-    document.body.appendChild(form);
-    form.submit();
   };
 
   return (
