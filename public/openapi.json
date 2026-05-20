@@ -1,0 +1,684 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "GLHF API",
+    "description": "API de la plateforme de tournois GLHF. Authentification via session NextAuth (cookie). Les routes admin nécessitent le rôle ADMIN ou SUPER_ADMIN.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "http://localhost:3000", "description": "Développement local" },
+    { "url": "https://glhf.vercel.app", "description": "Production" }
+  ],
+  "tags": [
+    { "name": "Auth", "description": "Inscription, connexion, vérification email, mot de passe" },
+    { "name": "Utilisateur", "description": "Profil, tokens, avatar" },
+    { "name": "Tournoi", "description": "Création, liste, participation" },
+    { "name": "Match", "description": "Liste et mise à jour des matchs" },
+    { "name": "Plans", "description": "Forfaits d'abonnement" },
+    { "name": "PayPal", "description": "Création d'abonnement et webhooks" },
+    { "name": "Contact", "description": "Formulaire de contact" },
+    { "name": "Admin - Utilisateurs", "description": "Gestion des utilisateurs (admin)" },
+    { "name": "Admin - Tournois", "description": "Gestion des tournois (admin)" },
+    { "name": "Admin - Paiements", "description": "Gestion des paiements (admin)" },
+    { "name": "Admin - Contacts", "description": "Gestion des contacts (admin)" },
+    { "name": "Cron", "description": "Tâches planifiées" }
+  ],
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "example": "Non autorisé" }
+        }
+      },
+      "Success": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "example": true }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "pseudo": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "role": { "type": "string", "enum": ["USER", "ADMIN", "SUPER_ADMIN"] },
+          "avatarUrl": { "type": "string", "nullable": true },
+          "tokensUsedThisMonth": { "type": "integer" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "isDeleted": { "type": "boolean" },
+          "plan": { "$ref": "#/components/schemas/Plan" }
+        }
+      },
+      "Plan": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string", "example": "Gold" },
+          "slug": { "type": "string", "example": "gold" },
+          "priceCents": { "type": "integer", "example": 199 },
+          "currency": { "type": "string", "example": "EUR" },
+          "tokensPerMonth": { "type": "integer", "example": 30 },
+          "paypalPlanId": { "type": "string", "nullable": true }
+        }
+      },
+      "Tournament": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "maxPlayers": { "type": "integer" },
+          "date": { "type": "string", "format": "date-time" },
+          "game": {
+            "type": "string",
+            "enum": ["LEAGUE_OF_LEGENDS", "VALORANT", "OVERWATCH", "FALL_GUYS", "MARVELS_RIVALS", "MINECRAFT"]
+          },
+          "isDeleted": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "createdBy": { "type": "object", "properties": { "pseudo": { "type": "string" } } },
+          "winner": { "type": "object", "nullable": true, "properties": { "pseudo": { "type": "string" } } },
+          "participantsCount": { "type": "integer" }
+        }
+      },
+      "Match": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "tournamentId": { "type": "integer" },
+          "round": { "type": "integer" },
+          "matchIndex": { "type": "integer" },
+          "playerId": { "type": "integer", "nullable": true },
+          "winnerId": { "type": "integer", "nullable": true }
+        }
+      }
+    },
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "next-auth.session-token",
+        "description": "Session NextAuth (automatiquement envoyée par le navigateur)"
+      }
+    }
+  },
+  "security": [{ "cookieAuth": [] }],
+  "paths": {
+    "/api/auth/inscription": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Créer un compte",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["pseudo", "email", "password"],
+                "properties": {
+                  "pseudo": { "type": "string", "example": "PlayerOne" },
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 12, "description": "Min 12 caractères, 3 types de caractères requis" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Compte créé, email de vérification envoyé",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "success": { "type": "boolean" }, "message": { "type": "string" }, "verificationRequired": { "type": "boolean" } } } } }
+          },
+          "400": { "description": "Champs invalides", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Email ou pseudo déjà utilisé" },
+          "503": { "description": "Base de données indisponible" }
+        }
+      }
+    },
+    "/api/auth/verify-email": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Vérifier l'adresse email via le lien reçu",
+        "security": [],
+        "parameters": [
+          { "name": "token", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirection vers /connexion?verified=1 ou /connexion?error=..." }
+        }
+      }
+    },
+    "/api/auth/mot-de-passe-oublie": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Demander un email de réinitialisation de mot de passe",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["email"], "properties": { "email": { "type": "string", "format": "email" } } } } }
+        },
+        "responses": {
+          "200": { "description": "Email envoyé (même réponse si email inexistant, pour éviter l'énumération)" },
+          "400": { "description": "Email manquant" }
+        }
+      }
+    },
+    "/api/auth/reinitialisation-mot-de-passe": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Réinitialiser le mot de passe avec un token",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["token", "password"], "properties": { "token": { "type": "string" }, "password": { "type": "string", "minLength": 12 } } } } }
+        },
+        "responses": {
+          "200": { "description": "Mot de passe mis à jour" },
+          "400": { "description": "Token invalide ou expiré" }
+        }
+      }
+    },
+    "/api/user": {
+      "get": {
+        "tags": ["Utilisateur"],
+        "summary": "Récupérer le profil de l'utilisateur connecté",
+        "responses": {
+          "200": { "description": "Profil utilisateur avec plan", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "401": { "description": "Non authentifié" },
+          "404": { "description": "Utilisateur introuvable" }
+        }
+      }
+    },
+    "/api/user/tokens": {
+      "get": {
+        "tags": ["Utilisateur"],
+        "summary": "Récupérer le solde de tokens",
+        "responses": {
+          "200": {
+            "description": "Solde de tokens",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "remaining": { "type": "integer" }, "used": { "type": "integer" }, "total": { "type": "integer" } } } } }
+          },
+          "401": { "description": "Non authentifié" }
+        }
+      }
+    },
+    "/api/user/ranking": {
+      "get": {
+        "tags": ["Utilisateur"],
+        "summary": "Récupérer les statistiques de classement de l'utilisateur connecté",
+        "responses": {
+          "200": {
+            "description": "Stats de classement",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "ranking": { "type": "integer" }, "matchesWon": { "type": "integer" }, "tournamentsWon": { "type": "integer" } } } } }
+          },
+          "401": { "description": "Non authentifié" }
+        }
+      }
+    },
+    "/api/user/avatar": {
+      "post": {
+        "tags": ["Utilisateur"],
+        "summary": "Mettre à jour l'avatar de l'utilisateur",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "seed": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "Avatar mis à jour" },
+          "401": { "description": "Non authentifié" }
+        }
+      }
+    },
+    "/api/user/pseudo/{pseudo}": {
+      "get": {
+        "tags": ["Utilisateur"],
+        "summary": "Récupérer le profil public d'un utilisateur par pseudo",
+        "security": [],
+        "parameters": [
+          { "name": "pseudo", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Profil public", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "404": { "description": "Utilisateur introuvable" }
+        }
+      }
+    },
+    "/api/user/cancel-plan": {
+      "post": {
+        "tags": ["Utilisateur"],
+        "summary": "Annuler l'abonnement PayPal et revenir au plan gratuit",
+        "responses": {
+          "200": { "description": "Abonnement annulé" },
+          "401": { "description": "Non authentifié" },
+          "404": { "description": "Utilisateur introuvable" }
+        }
+      }
+    },
+    "/api/tournament/create": {
+      "post": {
+        "tags": ["Tournoi"],
+        "summary": "Créer un tournoi (consomme 1 token)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "description", "maxPlayers", "date", "time", "game"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "maxPlayers": { "type": "integer", "minimum": 2, "maximum": 64 },
+                  "date": { "type": "string", "format": "date", "example": "2025-12-31" },
+                  "time": { "type": "string", "example": "18:00" },
+                  "game": { "type": "string", "enum": ["LEAGUE_OF_LEGENDS", "VALORANT", "OVERWATCH", "FALL_GUYS", "MARVELS_RIVALS", "MINECRAFT"] },
+                  "image": { "type": "string", "format": "binary", "description": "Image optionnelle, max 2 Mo (JPEG/PNG/WebP/GIF)" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Tournoi créé", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Tournament" } } } },
+          "400": { "description": "Champs invalides ou date dans le passé" },
+          "401": { "description": "Non authentifié" },
+          "403": { "description": "Tokens insuffisants" }
+        }
+      }
+    },
+    "/api/tournament/list": {
+      "get": {
+        "tags": ["Tournoi"],
+        "summary": "Lister les tournois",
+        "security": [],
+        "parameters": [
+          { "name": "game", "in": "query", "schema": { "type": "string" } },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["active", "finished", "all"] } }
+        ],
+        "responses": {
+          "200": { "description": "Liste des tournois", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Tournament" } } } } }
+        }
+      }
+    },
+    "/api/tournament/{id}": {
+      "get": {
+        "tags": ["Tournoi"],
+        "summary": "Récupérer un tournoi par ID",
+        "security": [],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Tournoi", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Tournament" } } } },
+          "404": { "description": "Tournoi introuvable" }
+        }
+      }
+    },
+    "/api/tournament/{id}/join": {
+      "post": {
+        "tags": ["Tournoi"],
+        "summary": "Rejoindre ou quitter un tournoi",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "enum": ["join", "leave"], "default": "join" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Action effectuée", "content": { "application/json": { "schema": { "type": "object", "properties": { "success": { "type": "boolean" }, "refunded": { "type": "boolean", "description": "true si token remboursé (leave avant début)" } } } } } },
+          "401": { "description": "Non authentifié" },
+          "403": { "description": "Tokens insuffisants" },
+          "404": { "description": "Tournoi introuvable" }
+        }
+      }
+    },
+    "/api/tournament/{id}/winner": {
+      "post": {
+        "tags": ["Tournoi"],
+        "summary": "Déclarer le vainqueur d'un tournoi",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "required": ["winnerId"], "properties": { "winnerId": { "type": "integer" } } } } }
+        },
+        "responses": {
+          "200": { "description": "Vainqueur déclaré" },
+          "401": { "description": "Non authentifié" },
+          "403": { "description": "Non autorisé" },
+          "404": { "description": "Tournoi introuvable" }
+        }
+      }
+    },
+    "/api/match/list": {
+      "get": {
+        "tags": ["Match"],
+        "summary": "Lister les matchs d'un tournoi",
+        "security": [],
+        "parameters": [
+          { "name": "tournamentId", "in": "query", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Liste des matchs", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Match" } } } } },
+          "400": { "description": "tournamentId manquant" },
+          "404": { "description": "Tournoi introuvable" }
+        }
+      }
+    },
+    "/api/match/update": {
+      "post": {
+        "tags": ["Match"],
+        "summary": "Mettre à jour le résultat d'un match",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tournamentId", "matchId", "winnerId"],
+                "properties": {
+                  "tournamentId": { "type": "integer" },
+                  "matchId": { "type": "integer" },
+                  "winnerId": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Match mis à jour" },
+          "400": { "description": "Paramètres invalides" },
+          "401": { "description": "Non authentifié" }
+        }
+      }
+    },
+    "/api/plans": {
+      "get": {
+        "tags": ["Plans"],
+        "summary": "Lister tous les forfaits disponibles",
+        "security": [],
+        "responses": {
+          "200": { "description": "Liste des plans", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Plan" } } } } }
+        }
+      }
+    },
+    "/api/paypal/create-subscription": {
+      "post": {
+        "tags": ["PayPal"],
+        "summary": "Créer une souscription PayPal pour un plan",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["planSlug"], "properties": { "planSlug": { "type": "string", "example": "gold" } } } } }
+        },
+        "responses": {
+          "200": { "description": "URL d'approbation PayPal", "content": { "application/json": { "schema": { "type": "object", "properties": { "approvalUrl": { "type": "string" } } } } } },
+          "400": { "description": "Plan gratuit ou planId PayPal manquant" },
+          "401": { "description": "Non authentifié" },
+          "404": { "description": "Plan introuvable" }
+        }
+      }
+    },
+    "/api/payment/webhook": {
+      "post": {
+        "tags": ["PayPal"],
+        "summary": "Webhook PayPal (usage interne)",
+        "description": "Reçoit les événements PayPal : BILLING.SUBSCRIPTION.ACTIVATED, BILLING.SUBSCRIPTION.CANCELLED, BILLING.SUBSCRIPTION.SUSPENDED, PAYMENT.SALE.COMPLETED. Vérifie la signature avant traitement.",
+        "security": [],
+        "responses": {
+          "200": { "description": "Événement traité" },
+          "400": { "description": "Payload invalide" },
+          "401": { "description": "Signature invalide" },
+          "500": { "description": "Erreur serveur" }
+        }
+      }
+    },
+    "/api/payment/subscribe": {
+      "post": {
+        "tags": ["PayPal"],
+        "summary": "Confirmer une souscription après redirection PayPal",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "subscriptionId": { "type": "string" }, "planSlug": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "Abonnement activé" },
+          "401": { "description": "Non authentifié" }
+        }
+      }
+    },
+    "/api/contact": {
+      "post": {
+        "tags": ["Contact"],
+        "summary": "Envoyer un message de contact (limité à 5 par jour)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["message"], "properties": { "message": { "type": "string", "minLength": 10 } } } } }
+        },
+        "responses": {
+          "200": { "description": "Message enregistré" },
+          "401": { "description": "Non authentifié" },
+          "429": { "description": "Limite journalière atteinte" }
+        }
+      }
+    },
+    "/api/report": {
+      "post": {
+        "tags": ["Tournoi"],
+        "summary": "Signaler un participant",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "required": ["participantId", "tournoiId", "motif"], "properties": { "participantId": { "type": "integer" }, "tournoiId": { "type": "integer" }, "motif": { "type": "string" }, "details": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "Signalement enregistré" },
+          "401": { "description": "Non authentifié" }
+        }
+      }
+    },
+    "/api/admin/users/search": {
+      "get": {
+        "tags": ["Admin - Utilisateurs"],
+        "summary": "Rechercher des utilisateurs",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" } },
+          { "name": "p", "in": "query", "schema": { "type": "integer", "default": 1 } }
+        ],
+        "responses": {
+          "200": { "description": "Résultats de recherche" },
+          "401": { "description": "Non authentifié ou non admin" }
+        }
+      }
+    },
+    "/api/admin/users/{id}/toggle-delete": {
+      "post": {
+        "tags": ["Admin - Utilisateurs"],
+        "summary": "Basculer le statut supprimé/actif d'un utilisateur (soft delete)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirection avec ok= ou err= en query string" },
+          "401": { "description": "Non authentifié" },
+          "403": { "description": "Non admin" }
+        }
+      }
+    },
+    "/api/admin/users/{id}/toggle-role": {
+      "post": {
+        "tags": ["Admin - Utilisateurs"],
+        "summary": "Changer le rôle d'un utilisateur (USER ↔ ADMIN, réservé SUPER_ADMIN pour ADMIN ↔ SUPER_ADMIN)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirection avec ok= ou err= en query string" },
+          "403": { "description": "Non admin ou action non autorisée" }
+        }
+      }
+    },
+    "/api/admin/users/{id}/update": {
+      "post": {
+        "tags": ["Admin - Utilisateurs"],
+        "summary": "Mettre à jour les informations d'un utilisateur",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "pseudo": { "type": "string" }, "email": { "type": "string" }, "role": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "Utilisateur mis à jour" },
+          "400": { "description": "Champs invalides ou doublon" },
+          "401": { "description": "Non authentifié" },
+          "403": { "description": "Non admin" },
+          "404": { "description": "Utilisateur introuvable" }
+        }
+      }
+    },
+    "/api/admin/tournaments/{id}/toggle-delete": {
+      "post": {
+        "tags": ["Admin - Tournois"],
+        "summary": "Basculer le statut supprimé/actif d'un tournoi",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "302": { "description": "Redirection avec ok= ou err= en query string" }
+        }
+      }
+    },
+    "/api/admin/tournaments/{id}/update": {
+      "post": {
+        "tags": ["Admin - Tournois"],
+        "summary": "Mettre à jour un tournoi",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "description": { "type": "string" }, "maxPlayers": { "type": "integer" }, "date": { "type": "string" }, "game": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "Tournoi mis à jour" },
+          "401": { "description": "Non authentifié" },
+          "403": { "description": "Non admin" }
+        }
+      }
+    },
+    "/api/admin/tournaments/{id}/participants": {
+      "get": {
+        "tags": ["Admin - Tournois"],
+        "summary": "Lister les participants d'un tournoi",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Liste des participants" }
+        }
+      },
+      "post": {
+        "tags": ["Admin - Tournois"],
+        "summary": "Ajouter ou retirer un participant",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "userId": { "type": "integer" }, "action": { "type": "string", "enum": ["add", "remove"] } } } } }
+        },
+        "responses": {
+          "200": { "description": "Action effectuée" }
+        }
+      }
+    },
+    "/api/admin/tournaments/{id}/available-users": {
+      "get": {
+        "tags": ["Admin - Tournois"],
+        "summary": "Lister les utilisateurs non encore participants",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Liste des utilisateurs disponibles" }
+        }
+      }
+    },
+    "/api/admin/payments": {
+      "get": {
+        "tags": ["Admin - Paiements"],
+        "summary": "Lister les paiements",
+        "parameters": [
+          { "name": "p", "in": "query", "schema": { "type": "integer", "default": 1 } }
+        ],
+        "responses": {
+          "200": { "description": "Liste paginée des paiements" }
+        }
+      }
+    },
+    "/api/admin/payments/action": {
+      "post": {
+        "tags": ["Admin - Paiements"],
+        "summary": "Effectuer une action sur un paiement",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "subscriptionId": { "type": "string" }, "action": { "type": "string", "enum": ["cancel", "suspend", "activate"] } } } } }
+        },
+        "responses": {
+          "200": { "description": "Action effectuée" }
+        }
+      }
+    },
+    "/api/admin/contacts": {
+      "get": {
+        "tags": ["Admin - Contacts"],
+        "summary": "Lister les messages de contact",
+        "responses": {
+          "200": { "description": "Liste des messages de contact" }
+        }
+      }
+    },
+    "/api/admin/contacts/{id}": {
+      "post": {
+        "tags": ["Admin - Contacts"],
+        "summary": "Mettre à jour le statut d'un message (EN_COURS → TRAITE)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "enum": ["EN_COURS", "TRAITE"] } } } } }
+        },
+        "responses": {
+          "200": { "description": "Statut mis à jour" }
+        }
+      },
+      "delete": {
+        "tags": ["Admin - Contacts"],
+        "summary": "Supprimer un message de contact",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Message supprimé" }
+        }
+      }
+    },
+    "/api/cron/reset-tokens": {
+      "get": {
+        "tags": ["Cron"],
+        "summary": "Réinitialiser les tokens mensuels de tous les utilisateurs",
+        "description": "Route appelée automatiquement le 1er de chaque mois. Nécessite le header Authorization avec la valeur du CRON_SECRET.",
+        "parameters": [
+          { "name": "Authorization", "in": "header", "required": true, "schema": { "type": "string" }, "description": "Bearer <CRON_SECRET>" }
+        ],
+        "responses": {
+          "200": { "description": "Tokens réinitialisés" },
+          "401": { "description": "Secret invalide" }
+        }
+      }
+    }
+  }
+}
