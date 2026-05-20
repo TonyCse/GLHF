@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 
 type ConsentState = "accepted" | "refused" | null;
@@ -14,6 +14,12 @@ type CookieConsentProps = {
 export default function CookieConsent({ consent, ready, onChange }: CookieConsentProps) {
   const refuseRef = useRef<HTMLButtonElement>(null);
 
+  const handleChoice = useCallback((value: "accepted" | "refused") => {
+    localStorage.setItem("glhf_cookie_consent", value);
+    document.cookie = `glhf_cookie_consent=${value}; Max-Age=31536000; Path=/; SameSite=Lax`;
+    onChange(value);
+  }, [onChange]);
+
   useEffect(() => {
     if (!ready || consent) return;
     refuseRef.current?.focus();
@@ -23,15 +29,9 @@ export default function CookieConsent({ consent, ready, onChange }: CookieConsen
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [ready, consent]);
+  }, [ready, consent, handleChoice]);
 
   if (!ready || consent) return null;
-
-  const handleChoice = (value: "accepted" | "refused") => {
-    localStorage.setItem("glhf_cookie_consent", value);
-    document.cookie = `glhf_cookie_consent=${value}; Max-Age=31536000; Path=/; SameSite=Lax`;
-    onChange(value);
-  };
 
   return (
     <div
