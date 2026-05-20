@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Check, Trophy, X } from "lucide-react";
 import Image from "next/image";
+import { useDialog } from "@/components/DialogProvider";
 
 type Participant = {
   id: number;
@@ -22,11 +23,16 @@ type Props = {
   tournamentId: number;
 };
 
-export default function TournamentBracket({ participants, isCreator = false, tournamentId }: Props) {
+export default function TournamentBracket({
+  participants,
+  isCreator = false,
+  tournamentId,
+}: Props) {
   const [winners, setWinners] = useState<WinnersMap>({});
   const [, setIsUpdating] = useState(false);
   const isUpdatingRef = useRef(false);
   const updatingCountRef = useRef(0);
+  const { alert } = useDialog();
 
   const rounds = Math.ceil(Math.log2(Math.max(participants.length, 2)));
   const totalSlots = Math.pow(2, rounds);
@@ -56,7 +62,8 @@ export default function TournamentBracket({ participants, isCreator = false, tou
 
   const removeWinner = (next: WinnersMap, round: number, matchIndex: number) => {
     if (!next[round]) return;
-    const { [matchIndex]: _removed, ...rest } = next[round];
+    const rest = { ...next[round] };
+    delete rest[matchIndex];
     if (Object.keys(rest).length) {
       next[round] = rest;
     } else {
@@ -95,34 +102,92 @@ export default function TournamentBracket({ participants, isCreator = false, tou
     });
   };
 
-  const fetchWinners = async (force = false) => {
-    if (isUpdatingRef.current && !force) return;
+  // Ref pour suivre si le tournoi est terminé (évite les re-renders en boucle)
+  const tournamentCompleteRef = useRef(false);
+  const tournamentIdRef = useRef(tournamentId);
+  tournamentIdRef.current = tournamentId;
+  const roundsRef = useRef(rounds);
+  roundsRef.current = rounds;
+
+  // Fonction de fetch utilisée UNIQUEMENT par les handlers manuels (validate/cancel)
+  const fetchWinnersManual = async () => {
     try {
-      const res = await fetch(`/api/match/list?tournamentId=${tournamentId}`);
+      const res = await fetch(
+        `/api/match/list?tournamentId=${tournamentIdRef.current}`,
+      );
       const data = await res.json();
       if (res.ok && data.matches) {
         const loadedWinners: WinnersMap = {};
-
-        data.matches.forEach((match: { round: number; matchIndex: number; winner?: Participant }) => {
-          const winner = match.winner;
-          if (winner && winner.id && winner.pseudo) {
-            if (!loadedWinners[match.round]) loadedWinners[match.round] = {};
-            loadedWinners[match.round][match.matchIndex] = winner;
-          }
-        });
-
+        data.matches.forEach(
+          (match: { round: number; matchIndex: number; winner?: Participant }) => {
+            const winner = match.winner;
+            if (winner && winner.id && winner.pseudo) {
+              if (!loadedWinners[match.round]) loadedWinners[match.round] = {};
+              loadedWinners[match.round][match.matchIndex] = winner;
+            }
+          },
+        );
         setWinners(loadedWinners);
+        const finalWinner = loadedWinners[roundsRef.current - 1]?.[0];
+        tournamentCompleteRef.current = !!finalWinner && finalWinner.pseudo !== "?";
       }
-    } catch (err) {
-      console.error("Erreur lors du chargement des gagnants:", err);
+    } catch {
+      // Erreur silencieuse
     }
   };
 
+  // Polling : un seul useEffect stable, aucune dépendance réactive qui change
   useEffect(() => {
-    fetchWinners();
-    const interval = setInterval(fetchWinners, 5000);
-    return () => clearInterval(interval);
-  }, [tournamentId]); 
+    const controller = new AbortController();
+    const id = tournamentId;
+    let intervalHandle: ReturnType<typeof setInterval> | null = null;
+    tournamentCompleteRef.current = false;
+
+    const doFetch = async () => {
+      if (isUpdatingRef.current || controller.signal.aborted) return;
+      try {
+        const res = await fetch(`/api/match/list?tournamentId=${id}`, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        const data = await res.json();
+        if (res.ok && data.matches) {
+          const loadedWinners: WinnersMap = {};
+          data.matches.forEach(
+            (match: { round: number; matchIndex: number; winner?: Participant }) => {
+              const winner = match.winner;
+              if (winner && winner.id && winner.pseudo) {
+                if (!loadedWinners[match.round]) loadedWinners[match.round] = {};
+                loadedWinners[match.round][match.matchIndex] = winner;
+              }
+            },
+          );
+          setWinners(loadedWinners);
+          const finalWinner = loadedWinners[roundsRef.current - 1]?.[0];
+          tournamentCompleteRef.current = !!finalWinner && finalWinner.pseudo !== "?";
+        }
+      } catch {
+        // Erreur silencieuse (inclut AbortError)
+      }
+    };
+
+    // Fetch initial puis polling toutes les 15s
+    doFetch().then(() => {
+      if (controller.signal.aborted || tournamentCompleteRef.current) return;
+      intervalHandle = setInterval(() => {
+        if (tournamentCompleteRef.current || controller.signal.aborted) {
+          if (intervalHandle) clearInterval(intervalHandle);
+          return;
+        }
+        doFetch();
+      }, 15_000);
+    });
+
+    return () => {
+      controller.abort();
+      if (intervalHandle) clearInterval(intervalHandle);
+    };
+  }, [tournamentId]);
 
   const handleValidateWinner = async (round: number, matchIndex: number, winner: Participant) => {
     try {
@@ -134,18 +199,31 @@ export default function TournamentBracket({ participants, isCreator = false, tou
       const data = await res.json();
       if (res.ok && data?.match?.winner?.id === winner.id) {
         if (round === rounds - 1 && winner?.id) {
-          await fetch(`/api/tournament/${tournamentId}/winner`, {
+          const winnerRes = await fetch(`/api/tournament/${tournamentId}/winner`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               winnerId: winner.id,
             }),
           });
+          if (!winnerRes.ok) {
+            const winnerData = await winnerRes.json();
+            await alert({
+              title: "Action impossible",
+              description: winnerData?.error || "Erreur lors de la déclaration du vainqueur.",
+            });
+          }
         }
         return true;
       }
-    } catch (err) {
-      console.error("Erreur:", err);
+      if (!res.ok && data?.error) {
+        await alert({
+          title: "Action impossible",
+          description: data.error,
+        });
+      }
+    } catch {
+      // Erreur réseau
     }
     return false;
   };
@@ -197,12 +275,12 @@ export default function TournamentBracket({ participants, isCreator = false, tou
       } else {
         await clearTournamentWinner();
       }
-    } catch (err) {
-      console.error("Erreur lors de l'annulation du gagnant:", err);
+    } catch {
+      // Erreur silencieuse
     } finally {
       const stillUpdating = stopUpdating();
       if (!stillUpdating) {
-        fetchWinners(true);
+        fetchWinnersManual();
       }
     }
   };
@@ -227,12 +305,12 @@ export default function TournamentBracket({ participants, isCreator = false, tou
 
       const isValid = await handleValidateWinner(round, matchIndex, player);
       if (!isValid) throw new Error("Enregistrement du gagnant impossible");
-    } catch (err) {
-      console.error("Erreur lors du changement de gagnant:", err);
+    } catch {
+      // Erreur silencieuse
     } finally {
       const stillUpdating = stopUpdating();
       if (!stillUpdating) {
-        fetchWinners(true);
+        fetchWinnersManual();
       }
     }
   };
@@ -264,21 +342,27 @@ export default function TournamentBracket({ participants, isCreator = false, tou
   return (
     <div className="flex flex-col gap-4">
       {hasChampion && championObj && (
-        <div className="rounded-2xl border border-[#8F60D0]/30 bg-gradient-to-r from-[#1c1d1f] via-[#222327] to-[#1c1d1f] px-5 py-4 shadow-lg">
+        <div className="rounded-2xl border border-[#8F60D0]/30 bg-linear-to-r from-[#1c1d1f] via-[#222327] to-[#1c1d1f] px-5 py-4 shadow-lg">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#8F60D0]/50 bg-[#8F60D0]/15 text-[#DCCEFF]">
                 <Trophy className="h-5 w-5" />
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-[0.35em] text-slate-400">Champion du tournoi</div>
+                <div className="text-[11px] uppercase tracking-[0.35em] text-slate-400">
+                  Champion du tournoi
+                </div>
                 <div className="text-xl font-semibold text-white">{championObj.pseudo}</div>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/30 px-4 py-2">
               <div className="h-10 w-10 overflow-hidden rounded-full border border-[#8F60D0]/50">
                 <Image
-                  src={championObj.avatarUrl || championObj.avatar || `https://api.dicebear.com/9.x/lorelei/png?seed=${encodeURIComponent(championObj.pseudo)}`}
+                  src={
+                    championObj.avatarUrl ||
+                    championObj.avatar ||
+                    `https://api.dicebear.com/9.x/lorelei/png?seed=${encodeURIComponent(championObj.pseudo)}`
+                  }
                   alt={championObj.pseudo}
                   width={40}
                   height={40}
@@ -291,12 +375,18 @@ export default function TournamentBracket({ participants, isCreator = false, tou
         </div>
       )}
 
-      <div className="bracket-scroll relative min-h-[700px] rounded-2xl border border-[#8F60D0]/20 bg-gradient-to-br from-[#1c1d1f] to-[#2a2b2f] p-6 shadow-xl overflow-x-auto overflow-y-hidden">
+      <div className="bracket-scroll relative min-h-[700px] rounded-2xl border border-[#8F60D0]/20 bg-linear-to-br from-[#1c1d1f] to-[#2a2b2f] p-6 shadow-xl overflow-x-auto overflow-y-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(143,96,208,0.15),_transparent_60%)]" />
 
-        <div className="relative flex items-start justify-center gap-12 min-w-fit py-4" ref={round0Ref}>
+        <div
+          className="relative flex items-start justify-center gap-12 min-w-fit py-4"
+          ref={round0Ref}
+        >
           {Array.from({ length: rounds }).map((_, roundIndex) => {
-            const matchCount = roundIndex === 0 ? totalSlots / 2 : Math.max(1, totalSlots / Math.pow(2, roundIndex + 1));
+            const matchCount =
+              roundIndex === 0
+                ? totalSlots / 2
+                : Math.max(1, totalSlots / Math.pow(2, roundIndex + 1));
             const spacing = Math.pow(2, roundIndex);
             const isFirstRound = roundIndex === 0;
             const matchHeight = roundHeight ? roundHeight / Math.pow(2, roundIndex) : "auto";
@@ -312,8 +402,12 @@ export default function TournamentBracket({ participants, isCreator = false, tou
                 <div className="flex flex-col gap-6" style={{ minHeight: matchHeight }}>
                   {Array.from({ length: matchCount }).map((_, matchIndex) => {
                     const playerIndex = matchIndex * spacing * 2;
-                    const playerA = isFirstRound ? paddedParticipants[playerIndex] : getWinner(roundIndex - 1, matchIndex * 2);
-                    const playerB = isFirstRound ? paddedParticipants[playerIndex + spacing] : getWinner(roundIndex - 1, matchIndex * 2 + 1);
+                    const playerA = isFirstRound
+                      ? paddedParticipants[playerIndex]
+                      : getWinner(roundIndex - 1, matchIndex * 2);
+                    const playerB = isFirstRound
+                      ? paddedParticipants[playerIndex + spacing]
+                      : getWinner(roundIndex - 1, matchIndex * 2 + 1);
 
                     const isAInvalid = !playerA || playerA.pseudo === "?" || playerA.isDeleted;
                     const isBInvalid = !playerB || playerB.pseudo === "?" || playerB.isDeleted;
@@ -323,8 +417,10 @@ export default function TournamentBracket({ participants, isCreator = false, tou
                     const winnerExists = !!winnerObj;
 
                     if (isCreator && !winnerExists && isRoundComplete(roundIndex - 1)) {
-                      if (!isAInvalid && isBInvalid) handleSelectWinner(roundIndex, matchIndex, playerA!);
-                      if (!isBInvalid && isAInvalid) handleSelectWinner(roundIndex, matchIndex, playerB!);
+                      if (!isAInvalid && isBInvalid)
+                        handleSelectWinner(roundIndex, matchIndex, playerA!);
+                      if (!isBInvalid && isAInvalid)
+                        handleSelectWinner(roundIndex, matchIndex, playerB!);
                     }
 
                     const renderPlayerRow = (
@@ -332,44 +428,52 @@ export default function TournamentBracket({ participants, isCreator = false, tou
                       isWinner: boolean,
                       isLoser: boolean,
                       isPlaceholder: boolean,
-                      qualifiesByDefault: boolean
+                      qualifiesByDefault: boolean,
                     ) => {
                       const isMissing = !!player?.isDeleted;
                       const name = isMissing
                         ? "Utilisateur introuvable"
                         : isPlaceholder
-                        ? "En attente..."
-                        : player?.pseudo || "Inconnu";
+                          ? "En attente..."
+                          : player?.pseudo || "Inconnu";
 
                       const rowTone = isWinner
                         ? "border-[#8F60D0]/60 bg-[#8F60D0]/15 text-white"
                         : isMissing
-                        ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
-                        : isLoser
-                        ? "border-white/10 bg-black/30 text-slate-400"
-                        : isPlaceholder
-                        ? "border-white/10 bg-white/5 text-slate-400"
-                        : "border-white/10 bg-black/20 text-slate-100";
+                          ? "border-rose-500/40 bg-rose-500/10 text-rose-100"
+                          : isLoser
+                            ? "border-white/10 bg-black/30 text-slate-400"
+                            : isPlaceholder
+                              ? "border-white/10 bg-white/5 text-slate-400"
+                              : "border-white/10 bg-black/20 text-slate-100";
 
                       const rowAccent = isWinner
-                        ? "border-l-4 border-l-[#8F60D0]"
+                        ? "ring-1 ring-inset ring-[#8F60D0]/55 shadow-[0_0_14px_rgba(143,96,208,0.25)]"
                         : isMissing
-                        ? "border-l-4 border-l-rose-500/60"
-                        : "border-l-4 border-l-transparent";
+                          ? "ring-1 ring-inset ring-rose-500/55 shadow-[0_0_14px_rgba(244,63,94,0.25)]"
+                          : "ring-1 ring-inset ring-white/5";
 
                       const avatarStyle = isWinner
                         ? "border-[#8F60D0]/60"
                         : isMissing
-                        ? "border-rose-500/50"
-                        : "border-white/20";
+                          ? "border-rose-500/50"
+                          : "border-white/20";
 
                       return (
-                        <div className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${rowTone} ${rowAccent}`}>
-                          <div className={`relative h-9 w-9 overflow-hidden rounded-full border ${avatarStyle}`}>
+                        <div
+                          className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${rowTone} ${rowAccent}`}
+                        >
+                          <div
+                            className={`relative h-9 w-9 overflow-hidden rounded-full border ${avatarStyle}`}
+                          >
                             {player && !isPlaceholder && !player.isDeleted ? (
                               <Image
-                                src={player.avatarUrl || player.avatar || `https://api.dicebear.com/9.x/lorelei/png?seed=${encodeURIComponent(player.pseudo)}`}
-                                alt={player.pseudo}
+                                src={
+                                  player.avatarUrl ||
+                                  player.avatar ||
+                                  `https://api.dicebear.com/9.x/lorelei/png?seed=${encodeURIComponent(player.pseudo)}`
+                                }
+                                alt={`Avatar de ${player.pseudo}`}
                                 fill
                                 className="object-cover"
                               />
@@ -381,29 +485,41 @@ export default function TournamentBracket({ participants, isCreator = false, tou
                           </div>
 
                           <div className="min-w-0 flex-1">
-                            <div className={`truncate text-sm font-semibold ${isLoser ? "line-through text-slate-400" : ""}`}>
+                            <div
+                              className={`truncate text-sm font-semibold ${isLoser ? "line-through text-slate-400" : ""}`}
+                            >
                               {name}
                             </div>
-                            {qualifiesByDefault && <div className="text-[11px] text-slate-400">Auto-qualifie</div>}
+                            {qualifiesByDefault && (
+                              <div className="text-[11px] text-slate-400">Auto-qualifié</div>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-2">
                             <div
                               className={`min-w-[88px] rounded-full border px-2 py-0.5 text-center text-[10px] uppercase tracking-[0.2em] ${
-                                isWinner ? "border-[#8F60D0]/50 text-[#DCCEFF]" : "border-white/10 text-slate-400"
+                                isWinner
+                                  ? "border-[#8F60D0]/50 text-[#DCCEFF]"
+                                  : "border-white/10 text-slate-400"
                               }`}
                             >
-                              {isWinner ? "Gagnant" : "Qualifie"}
+                              {isWinner ? "Gagnant" : "Qualifié"}
                             </div>
 
                             {isCreator && !isPlaceholder && player && !player.isDeleted && (
                               <div className="flex items-center gap-1">
                                 {(!winnerExists || !isWinner) && (
                                   <button
-                                    onClick={() => handleSelectWinner(roundIndex, matchIndex, player)}
-                                    className="rounded border border-[#8F60D0]/40 px-1.5 py-1 text-[#DCCEFF] transition hover:border-[#8F60D0] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                                    title={winnerExists ? "Changer le gagnant" : "Designer comme gagnant"}
-                                    aria-label={winnerExists ? "Changer le gagnant" : "Designer comme gagnant"}
+                                    onClick={() =>
+                                      handleSelectWinner(roundIndex, matchIndex, player)
+                                    }
+                                    className="btn-plain rounded border border-[#8F60D0]/40 px-1.5 py-1 text-[#DCCEFF] transition hover:border-[#8F60D0] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                    title={
+                                      winnerExists ? "Changer le gagnant" : "Désigner comme gagnant"
+                                    }
+                                    aria-label={
+                                      winnerExists ? "Changer le gagnant" : "Désigner comme gagnant"
+                                    }
                                   >
                                     <Check className="h-4 w-4" />
                                   </button>
@@ -411,7 +527,7 @@ export default function TournamentBracket({ participants, isCreator = false, tou
                                 {isWinner && (
                                   <button
                                     onClick={() => handleCancelWinner(roundIndex, matchIndex)}
-                                    className="rounded border border-rose-500/40 px-1.5 py-1 text-rose-300 transition hover:border-rose-400 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="btn-plain rounded border border-rose-500/40 px-1.5 py-1 text-rose-300 transition hover:border-rose-400 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
                                     title="Annuler la victoire"
                                     aria-label="Annuler la victoire"
                                   >
@@ -438,9 +554,23 @@ export default function TournamentBracket({ participants, isCreator = false, tou
                       <div key={matchIndex} className="relative">
                         <div className="rounded-xl border border-white/10 bg-[#8F60D0]/10 p-3">
                           <div className="flex flex-col gap-2">
-                            {renderPlayerRow(playerA, isWinnerA, isLoserA, isPlaceholderA, qualifiesA)}
-                            <div className="text-center text-[11px] uppercase tracking-[0.3em] text-slate-400">vs</div>
-                            {renderPlayerRow(playerB, isWinnerB, isLoserB, isPlaceholderB, qualifiesB)}
+                            {renderPlayerRow(
+                              playerA,
+                              isWinnerA,
+                              isLoserA,
+                              isPlaceholderA,
+                              qualifiesA,
+                            )}
+                            <div className="text-center text-[11px] uppercase tracking-[0.3em] text-slate-400">
+                              vs
+                            </div>
+                            {renderPlayerRow(
+                              playerB,
+                              isWinnerB,
+                              isLoserB,
+                              isPlaceholderB,
+                              qualifiesB,
+                            )}
                           </div>
                         </div>
                       </div>

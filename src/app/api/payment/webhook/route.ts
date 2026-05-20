@@ -1,76 +1,106 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { verifyPaypalWebhookSignature } from "@/lib/paypal";
+import { z } from "zod";
+import { logger } from "@/lib/logger";
 
+type PaypalResource = {
+  id?: string;
+  custom_id?: string;
+  plan_id?: string;
+  amount?: { total?: string };
+};
+
+type PaypalWebhookPayload = {
+  event_type: string;
+  resource?: PaypalResource;
+};
+
+// Function qui permet de traiter le webhook PayPal.
 export async function POST(req: Request) {
   try {
-    // Vérifier l'authentification du webhook PayPal
-    // En production, il faut vérifier la signature PayPal
-    const paypalSignature = req.headers.get('paypal-auth-algo');
-    const paypalCertId = req.headers.get('paypal-cert-id');
-    
-    if (!paypalSignature || !paypalCertId) {
-      return NextResponse.json(
-        { error: "Webhook non authentifié" },
-        { status: 401 }
-      );
+    const body = await req.json();
+    const isVerified = await verifyPaypalWebhookSignature(body, req.headers);
+    if (!isVerified) {
+      return NextResponse.json({ error: "Webhook non authentifie" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const eventType = body.event_type;
+    const schema = z
+      .object({
+        event_type: z.string(),
+        resource: z.unknown().optional(),
+      })
+      .passthrough();
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Payload invalide" }, { status: 400 });
+    }
 
-    console.log("PayPal webhook reçu:", eventType);
+    const eventType = parsed.data.event_type;
+
+    // Log event type only (no sensitive data)
 
     switch (eventType) {
-      case 'BILLING.SUBSCRIPTION.CREATED':
-        await handleSubscriptionCreated(body);
+      case "BILLING.SUBSCRIPTION.CREATED":
+        await handleSubscriptionCreated(parsed.data as PaypalWebhookPayload);
         break;
-        
-      case 'BILLING.SUBSCRIPTION.ACTIVATED':
-        await handleSubscriptionActivated(body);
+
+      case "BILLING.SUBSCRIPTION.ACTIVATED":
+        await handleSubscriptionActivated(parsed.data as PaypalWebhookPayload);
         break;
-        
-      case 'BILLING.SUBSCRIPTION.CANCELLED':
-        await handleSubscriptionCancelled(body);
+
+      case "BILLING.SUBSCRIPTION.CANCELLED":
+        await handleSubscriptionCancelled(parsed.data as PaypalWebhookPayload);
         break;
-        
-      case 'BILLING.SUBSCRIPTION.SUSPENDED':
-        await handleSubscriptionSuspended(body);
+
+      case "BILLING.SUBSCRIPTION.SUSPENDED":
+        await handleSubscriptionSuspended(parsed.data as PaypalWebhookPayload);
         break;
-        
-      case 'PAYMENT.SALE.COMPLETED':
-        await handlePaymentCompleted(body);
+
+      case "PAYMENT.SALE.COMPLETED":
+        await handlePaymentCompleted(parsed.data as PaypalWebhookPayload);
         break;
-        
+
       default:
-        console.log("Type d'événement PayPal non géré:", eventType);
+        // Type d'événement PayPal non géré
     }
 
     return NextResponse.json({ success: true });
-
-  } catch (error) {
-    console.error("Erreur lors du traitement du webhook PayPal:", error);
-    return NextResponse.json(
-      { error: "Erreur serveur" },
-      { status: 500 }
-    );
+  } catch (err: unknown) {
+    logger.error("webhook_paypal_erreur", { message: err instanceof Error ? err.message : String(err) });
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
 
-async function handleSubscriptionCreated(data: any) {
-  // L'abonnement a été créé mais pas encore activé
-  console.log("Abonnement PayPal créé:", data.resource.id);
+// Function qui permet de traiter la creation d'abonnement.
+async function handleSubscriptionCreated(data: PaypalWebhookPayload) {
+  const subscriptionId = data.resource?.id;
+  const customId = data.resource?.custom_id;
+
+  logger.info("paypal_souscription_creee", { subscriptionId, customId });
+
+  if (!subscriptionId) return;
+
+  const user = await prisma.user.findFirst({
+    where: { paypalSubscriptionId: subscriptionId },
+    select: { id: true },
+  });
+
+  if (!user) {
+    logger.warn("paypal_souscription_creee_sans_utilisateur", { subscriptionId, customId });
+  }
 }
 
-async function handleSubscriptionActivated(data: any) {
-  // L'abonnement a été activé, activer le plan utilisateur
-  const subscriptionId = data.resource.id;
-  const customId = data.resource.custom_id; // ID utilisateur que nous aurons passé
-  const planId = data.resource.plan_id;
+// Function qui permet de traiter l'activation d'un abonnement.
+async function handleSubscriptionActivated(data: PaypalWebhookPayload) {
+  const subscriptionId = data.resource?.id;
+  const customId = data.resource?.custom_id;
+  const planId = data.resource?.plan_id;
 
   let userId: number | null = null;
   if (customId) {
     const parsed = parseInt(customId);
-    if (!Number.isNaN(parsed)) userId = parsed;
+    if (!Number.isNaN(parsed) && parsed > 0) userId = parsed;
   }
 
   if (!userId && subscriptionId) {
@@ -81,7 +111,9 @@ async function handleSubscriptionActivated(data: any) {
     userId = user?.id ?? null;
   }
 
-  if (!userId || !planId) return;
+  if (!userId || !planId) {
+    return;
+  }
 
   const plan = await prisma.plan.findFirst({
     where: { paypalPlanId: planId },
@@ -100,15 +132,15 @@ async function handleSubscriptionActivated(data: any) {
   });
 }
 
-async function handleSubscriptionCancelled(data: any) {
-  // L'abonnement a été annulé, remettre l'utilisateur sur le plan gratuit
-  const subscriptionId = data.resource.id;
-  const customId = data.resource.custom_id;
-  
+// Function qui permet de traiter l'annulation d'un abonnement.
+async function handleSubscriptionCancelled(data: PaypalWebhookPayload) {
+  const subscriptionId = data.resource?.id;
+  const customId = data.resource?.custom_id;
+
   let userId: number | null = null;
   if (customId) {
     const parsed = parseInt(customId);
-    if (!Number.isNaN(parsed)) userId = parsed;
+    if (!Number.isNaN(parsed) && parsed > 0) userId = parsed;
   }
 
   if (!userId && subscriptionId) {
@@ -119,9 +151,10 @@ async function handleSubscriptionCancelled(data: any) {
     userId = user?.id ?? null;
   }
 
-  if (!userId) return;
+  if (!userId) {
+    return;
+  }
 
-  // Trouver le plan gratuit
   const freePlan = await prisma.plan.findFirst({
     where: { priceCents: 0 },
   });
@@ -136,20 +169,35 @@ async function handleSubscriptionCancelled(data: any) {
     },
   });
 
-  console.log("Utilisateur remis sur le plan gratuit:", userId);
+  // Utilisateur remis sur le plan gratuit
 }
 
-async function handleSubscriptionSuspended(data: any) {
-  // L'abonnement a été suspendu (paiement échoué, etc.)
-  console.log("Abonnement suspendu:", data.resource.id);
-  
-  // Ici, on pourrait envoyer un email à l'utilisateur ou suspendre temporairement l'accès premium
+// Function qui permet de traiter la suspension d'un abonnement.
+async function handleSubscriptionSuspended(data: PaypalWebhookPayload) {
+  const subscriptionId = data.resource?.id;
+  const customId = data.resource?.custom_id;
+
+  let userId: number | null = null;
+  if (customId) {
+    const parsed = parseInt(customId);
+    if (!Number.isNaN(parsed) && parsed > 0) userId = parsed;
+  }
+
+  if (!userId && subscriptionId) {
+    const user = await prisma.user.findFirst({
+      where: { paypalSubscriptionId: subscriptionId },
+      select: { id: true },
+    });
+    userId = user?.id ?? null;
+  }
+
+  logger.warn("paypal_souscription_suspendue", { subscriptionId, userId });
 }
 
-async function handlePaymentCompleted(data: any) {
-  // Un paiement récurrent a été effectué avec succès
-  const paymentAmount = data.resource.amount.total;
-  console.log("Paiement PayPal reçu:", paymentAmount);
+// Function qui permet de traiter un paiement reussi.
+async function handlePaymentCompleted(data: PaypalWebhookPayload) {
+  logger.info("paypal_paiement_recu", {
+    resourceId: data.resource?.id,
+    montant: data.resource?.amount?.total,
+  });
 }
-
-

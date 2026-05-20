@@ -5,8 +5,6 @@
   --foreground: #171717;
 }
 
-
-
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
@@ -23,12 +21,90 @@ body {
   -ms-user-select: none;
 }
 
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+button:not(.btn-plain):not(.btn-danger),
+.btn-neon {
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease;
+
+  color: #ffffff !important;
+}
+
+button:not(.btn-plain):not(.btn-danger):disabled {
+  opacity: 0.6;
+  box-shadow: none;
+}
+
+button:not(.btn-plain):not(.btn-danger):hover,
+.btn-neon:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+  box-shadow: none;
+}
+
+button:not(.btn-plain):not(.btn-danger):active,
+.btn-neon:active {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+
+button:not(.btn-plain):not(.btn-danger):focus-visible,
+.btn-neon:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(143, 96, 208, 0.6),
+    0 0 0 6px rgba(168, 85, 247, 0.35),
+    0 12px 28px rgba(143, 96, 208, 0.28);
+}
+
+.btn-danger {
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease;
+}
+
+.btn-danger:disabled {
+  opacity: 0.6;
+  box-shadow: none;
+}
+
+.btn-danger:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.35),
+    0 12px 28px rgba(239, 68, 68, 0.28);
+}
+
+.btn-danger:active {
+  transform: translateY(0);
+  filter: brightness(0.98);
+}
+
+.btn-danger:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(239, 68, 68, 0.6),
+    0 0 0 6px rgba(239, 68, 68, 0.25),
+    0 12px 28px rgba(239, 68, 68, 0.28);
+}
+
 input:-webkit-autofill,
 textarea:-webkit-autofill,
 select:-webkit-autofill {
   -webkit-box-shadow: 0 0 0px 1000px #2a2b2e inset !important;
   -webkit-text-fill-color: white !important;
-  border-color: #8F60D0 !important;
+  border-color: #8f60d0 !important;
   transition: background-color 9999s ease-in-out 0s;
 }
 
@@ -61,16 +137,24 @@ select:-webkit-autofill {
   background: linear-gradient(90deg, #a855f7, #8f60d0);
 }
 
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.faq-accordion summary::-webkit-details-marker {
+  display: none;
+}
+
 [data-loader-words]::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    #1c1d1f 10%,
-    transparent 30%,
-    transparent 70%,
-    #1c1d1f 90%
-  );
+  background: linear-gradient(#1c1d1f 10%, transparent 30%, transparent 70%, #1c1d1f 90%);
   z-index: 20;
   pointer-events: none;
 }

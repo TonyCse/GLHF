@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Game } from "@prisma/client";
 
 export type TournamentListItem = {
   id: number;
@@ -19,9 +20,9 @@ export type TournamentListItem = {
   } | null;
 };
 
-export async function getTournamentList(): Promise<TournamentListItem[]> {
+export async function getTournamentList(options?: { game?: Game }): Promise<TournamentListItem[]> {
   const tournois = await prisma.tournament.findMany({
-    where: { isDeleted: false },
+    where: { isDeleted: false, ...(options?.game ? { game: options.game } : {}) },
     orderBy: { date: "asc" },
     include: {
       createdBy: {
@@ -52,9 +53,9 @@ export async function getTournamentList(): Promise<TournamentListItem[]> {
     name: tournoi.name,
     description: tournoi.description,
     maxPlayers: tournoi.maxPlayers,
-    date: (tournoi.date ?? tournoi.createdAt ?? new Date()).toISOString(),
+    date: tournoi.date.toISOString(),
     game: tournoi.game,
-    createdAt: (tournoi.createdAt ?? tournoi.date ?? new Date()).toISOString(),
+    createdAt: tournoi.createdAt.toISOString(),
     participantsCount: tournoi.participants.length,
     createdBy: tournoi.createdBy?.isDeleted
       ? { pseudo: "Utilisateur introuvable" }
@@ -62,7 +63,11 @@ export async function getTournamentList(): Promise<TournamentListItem[]> {
     winner: tournoi.winner?.isDeleted
       ? { id: tournoi.winner.id, pseudo: "Utilisateur introuvable", avatarUrl: null }
       : tournoi.winner
-      ? { id: tournoi.winner.id, pseudo: tournoi.winner.pseudo, avatarUrl: tournoi.winner.avatarUrl || null }
-      : null,
+        ? {
+            id: tournoi.winner.id,
+            pseudo: tournoi.winner.pseudo,
+            avatarUrl: tournoi.winner.avatarUrl || null,
+          }
+        : null,
   }));
 }

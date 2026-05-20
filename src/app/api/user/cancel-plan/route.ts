@@ -2,21 +2,25 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cancelPaypalSubscription } from "@/lib/paypal";
+import { z } from "zod";
+import { logger } from "@/lib/logger";
 
-export async function POST(req: Request) {
+export async function POST() {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
   try {
-    const userId = Number(session.user.id);
-    if (!userId) {
+    const idSchema = z.coerce.number().int().positive();
+    const parsedId = idSchema.safeParse(session.user.id);
+    if (!parsedId.success) {
       return NextResponse.json({ error: "Utilisateur invalide" }, { status: 400 });
     }
+    const userId = parsedId.data;
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+    const user = await prisma.user.findFirst({
+      where: { id: userId, isDeleted: false },
       select: { paypalSubscriptionId: true },
     });
 
@@ -25,10 +29,7 @@ export async function POST(req: Request) {
     }
 
     if (user.paypalSubscriptionId) {
-      await cancelPaypalSubscription(
-        user.paypalSubscriptionId,
-        "User requested cancellation"
-      );
+      await cancelPaypalSubscription(user.paypalSubscriptionId, "User requested cancellation");
     }
 
     const freePlan = await prisma.plan.findFirst({
@@ -46,8 +47,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ success: true });
-  } catch (e) {
-    console.error("Erreur cancel plan:", e);
+  } catch (err: unknown) {
+    logger.error("user_cancel_plan_erreur", { message: err instanceof Error ? err.message : String(err) });
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

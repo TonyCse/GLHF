@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cancelPaypalSubscription, createPaypalSubscription } from "@/lib/paypal";
+import { z } from "zod";
+import { logger } from "@/lib/logger";
 
+// Function qui permet de demarrer une souscription.
 export async function POST(req: Request) {
   const session = await auth();
 
@@ -11,7 +14,14 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { planId } = await req.json();
+    const schema = z.object({
+      planId: z.coerce.number().int().positive(),
+    });
+    const parsed = schema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: "ID du plan requis" }, { status: 400 });
+    }
+    const { planId } = parsed.data;
 
     if (!planId) {
       return NextResponse.json({ error: "ID du plan requis" }, { status: 400 });
@@ -30,8 +40,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Utilisateur invalide" }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+    const user = await prisma.user.findFirst({
+      where: { id: userId, isDeleted: false },
       select: { paypalSubscriptionId: true },
     });
 
@@ -39,13 +49,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
     }
 
-    // ✅ PLAN GRATUIT
+    // Plan gratuit
     if (plan.priceCents === 0) {
       if (user.paypalSubscriptionId) {
-        await cancelPaypalSubscription(
-          user.paypalSubscriptionId,
-          "User requested cancellation"
-        );
+        await cancelPaypalSubscription(user.paypalSubscriptionId, "User requested cancellation");
       }
 
       await prisma.user.update({
@@ -65,18 +72,12 @@ export async function POST(req: Request) {
     }
 
     if (!plan.paypalPlanId) {
-      return NextResponse.json(
-        { error: "Plan PayPal manquant" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Plan PayPal manquant" }, { status: 400 });
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL;
     if (!appUrl) {
-      return NextResponse.json(
-        { error: "NEXT_PUBLIC_APP_URL manquant" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "NEXT_PUBLIC_APP_URL manquant" }, { status: 500 });
     }
 
     const { approvalUrl } = await createPaypalSubscription({
@@ -87,13 +88,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ success: true, approvalUrl });
-
-  } catch (error) {
-    console.error("subscribe error:", error);
-    return NextResponse.json(
-      { error: "Erreur serveur subscribe" },
-      { status: 500 }
-    );
+  } catch (err: unknown) {
+    logger.error("payment_subscribe_erreur", { message: err instanceof Error ? err.message : String(err) });
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
-

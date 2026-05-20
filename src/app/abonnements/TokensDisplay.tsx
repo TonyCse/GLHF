@@ -1,20 +1,9 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { Clock, Zap } from "lucide-react";
 
-interface User {
-  id: number;
-  tokensUsedThisMonth: number;
-  tokensMonthStart?: Date | null;
-  plan?: {
-    name: string;
-    tokensPerMonth: number;
-  } | null;
-}
-
 interface TokensDisplayProps {
-  user: User;
   initialTokensInfo?: TokensInfo | null;
 }
 
@@ -26,7 +15,7 @@ interface TokensInfo {
   monthStart?: string | Date | null;
 }
 
-export default function TokensDisplay({ user, initialTokensInfo = null }: TokensDisplayProps) {
+export default function TokensDisplay({ initialTokensInfo = null }: TokensDisplayProps) {
   const [tokensInfo, setTokensInfo] = useState<TokensInfo | null>(initialTokensInfo);
   const [loading, setLoading] = useState(!initialTokensInfo);
 
@@ -45,8 +34,8 @@ export default function TokensDisplay({ user, initialTokensInfo = null }: Tokens
         if (data.success) {
           setTokensInfo(data.data);
         }
-      } catch (error) {
-        console.error("Erreur lors de la recuperation des tokens:", error);
+      } catch {
+        // Erreur silencieuse
       } finally {
         setLoading(false);
       }
@@ -81,18 +70,18 @@ export default function TokensDisplay({ user, initialTokensInfo = null }: Tokens
   return (
     <div className="bg-[#1c1d1f] rounded-2xl p-6 border border-[#2a2c30] max-w-md mx-auto">
       <div className="flex items-center gap-4 mb-4">
-        <div className="w-12 h-12 bg-gradient-to-r from-[#8F60D0] to-[#A855F7] rounded-full flex items-center justify-center">
+        <div className="w-12 h-12 bg-linear-to-r from-[#8F60D0] to-[#A855F7] rounded-full flex items-center justify-center">
           <Zap className="w-6 h-6 text-white" />
         </div>
         <div>
           <h3 className="text-xl font-bold text-white">Mes tokens GLHF</h3>
-          <p className="text-gray-400">{tokensInfo.plan}</p>
+          <p className="text-white">{tokensInfo.plan}</p>
         </div>
       </div>
 
       <div className="mb-4">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-sm text-gray-400">Tokens utilises ce mois</span>
+          <span className="text-sm text-white">Tokens utilisés ce mois</span>
           <span className="text-sm font-medium text-white">
             {tokensInfo.usedTokens} / {tokensInfo.totalTokensThisMonth}
           </span>
@@ -100,7 +89,7 @@ export default function TokensDisplay({ user, initialTokensInfo = null }: Tokens
 
         <div className="w-full bg-gray-700 rounded-full h-3">
           <div
-            className="bg-gradient-to-r from-[#8F60D0] to-[#A855F7] h-3 rounded-full transition-all duration-300"
+            className="bg-linear-to-r from-[#8F60D0] to-[#A855F7] h-3 rounded-full transition-all duration-300"
             style={{ width: `${Math.min(percentageUsed, 100)}%` }}
           />
         </div>
@@ -109,17 +98,17 @@ export default function TokensDisplay({ user, initialTokensInfo = null }: Tokens
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-[#232426] rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-green-400">{tokensInfo.remainingTokens}</div>
-          <div className="text-sm text-gray-400">Restants</div>
+          <div className="text-sm text-white">Restants</div>
         </div>
 
         <div className="bg-[#232426] rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-blue-400">{tokensInfo.totalTokensThisMonth}</div>
-          <div className="text-sm text-gray-400">Par mois</div>
+          <div className="text-sm text-white">Par mois</div>
         </div>
       </div>
 
       {tokensInfo.monthStart && (
-        <div className="mt-4 flex items-center gap-2 text-sm text-gray-400">
+        <div className="mt-4 flex items-center gap-2 text-sm text-white">
           <Clock className="w-4 h-4" />
           <span>Prochaine recharge: {getNextMonthDate(tokensInfo.monthStart)}</span>
         </div>

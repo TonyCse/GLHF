@@ -1,13 +1,15 @@
-// src/app/api/paypal/create-subscription/route.ts
+// Route de creation d'abonnement PayPal.
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createPaypalSubscription } from "@/lib/paypal";
+import { z } from "zod";
 
+// Function qui permet de creer une souscription PayPal.
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user?.id) {
-    return NextResponse.redirect("/signin");
+    return NextResponse.redirect("/connexion");
   }
 
   const contentType = req.headers.get("content-type") || "";
@@ -21,10 +23,12 @@ export async function POST(req: Request) {
     planIdValue = form.get("planId");
   }
 
-  const planId = Number(planIdValue);
-  if (!planId) {
+  const schema = z.coerce.number().int().positive();
+  const parsed = schema.safeParse(planIdValue);
+  if (!parsed.success) {
     return NextResponse.json({ error: "ID du plan requis" }, { status: 400 });
   }
+  const planId = parsed.data;
 
   const plan = await prisma.plan.findUnique({ where: { id: planId } });
   if (!plan) {
@@ -32,10 +36,7 @@ export async function POST(req: Request) {
   }
 
   if (plan.priceCents === 0) {
-    return NextResponse.json(
-      { error: "Plan gratuit non compatible PayPal" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Plan gratuit non compatible PayPal" }, { status: 400 });
   }
 
   if (!plan.paypalPlanId) {
@@ -44,10 +45,7 @@ export async function POST(req: Request) {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
   if (!appUrl) {
-    return NextResponse.json(
-      { error: "NEXT_PUBLIC_APP_URL manquant" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "NEXT_PUBLIC_APP_URL manquant" }, { status: 500 });
   }
 
   try {
@@ -59,11 +57,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.redirect(approvalUrl);
-  } catch (e: any) {
-    console.error(e);
-    return NextResponse.json(
-      { error: e.message ?? "Erreur PayPal" },
-      { status: 500 }
-    );
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Erreur PayPal";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

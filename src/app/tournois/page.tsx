@@ -7,7 +7,10 @@ import { getTournamentList } from "@/lib/tournaments";
 export const metadata: Metadata = {
   title: "Tournois | GLHF",
   description:
-    "Parcourez les tournois GLHF par jeu, statut et disponibilite. Rejoignez les competitions en cours ou inscrivez-vous aux prochains tournois.",
+    "Parcourez les tournois GLHF par jeu, statut et disponibilité. Rejoignez les compétitions en cours ou inscrivez-vous aux prochains tournois.",
+  alternates: {
+    canonical: "/tournois",
+  },
 };
 
 const DEFAULT_TOKENS_PER_MONTH = 3;

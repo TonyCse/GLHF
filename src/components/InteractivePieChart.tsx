@@ -25,7 +25,7 @@ export default function InteractivePieChart({
   size,
   showLegend,
   showPercentage,
-  enableUserClick = false
+  enableUserClick = false,
 }: InteractivePieChartProps) {
   const router = useRouter();
 
@@ -46,4 +46,3 @@ export default function InteractivePieChart({
     />
   );
 }
-

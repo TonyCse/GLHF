@@ -1,28 +1,28 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { z } from "zod";
+import { logger } from "@/lib/logger";
 
-export async function GET(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
+// Function qui permet de recuperer un tournoi.
+export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
   const params = await context.params;
-  const id = parseInt(params.id, 10);
-
-  if (isNaN(id)) {
+  const idSchema = z.coerce.number().int().positive();
+  const parsedId = idSchema.safeParse(params.id);
+  if (!parsedId.success) {
     return NextResponse.json({ error: "ID invalide" }, { status: 400 });
   }
+  const id = parsedId.data;
 
   try {
-    const tournoi = await prisma.tournament.findUnique({
-      where: { id },
+    const tournoi = await prisma.tournament.findFirst({
+      where: { id, isDeleted: false },
       include: {
-        createdBy: { 
-          select: { 
-            pseudo: true, 
-            email: true, 
-            isDeleted: true 
-          } 
+        createdBy: {
+          select: {
+            pseudo: true,
+            isDeleted: true,
+          },
         },
         participants: {
           where: { isActive: true },
@@ -32,7 +32,6 @@ export async function GET(
                 id: true,
                 pseudo: true,
                 avatarUrl: true,
-                email: true,
                 isDeleted: true,
               },
             },
@@ -45,22 +44,20 @@ export async function GET(
       return NextResponse.json({ error: "Tournoi non trouvé" }, { status: 404 });
     }
 
-    // Afficher "Utilisateur introuvable" pour les utilisateurs supprimés
+    // Afficher "Utilisateur introuvable" pour les utilisateurs supprimes
     const tournoiFiltered = {
       ...tournoi,
-      createdBy: tournoi.createdBy?.isDeleted 
-        ? { 
-            pseudo: "Utilisateur introuvable", 
-            email: tournoi.createdBy.email 
+      createdBy: tournoi.createdBy?.isDeleted
+        ? {
+            pseudo: "Utilisateur introuvable",
           }
         : tournoi.createdBy,
-      participants: tournoi.participants.map(participation => ({
+      participants: tournoi.participants.map((participation) => ({
         id: participation.user.id,
-        pseudo: participation.user.isDeleted 
-          ? "Utilisateur introuvable" 
+        pseudo: participation.user.isDeleted
+          ? "Utilisateur introuvable"
           : participation.user.pseudo,
         avatarUrl: participation.user.avatarUrl,
-        email: participation.user.email,
         isDeleted: participation.user.isDeleted,
         joinedAt: participation.joinedAt,
         isActive: participation.isActive,
@@ -68,16 +65,14 @@ export async function GET(
     };
 
     return NextResponse.json(tournoiFiltered);
-  } catch (err) {
-    console.error("Erreur GET tournoi :", err);
+  } catch (err: unknown) {
+    logger.error("tournament_get_erreur", { message: err instanceof Error ? err.message : String(err) });
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
 
-export async function DELETE(
-  req: Request,
-  context: { params: Promise<{ id: string }> }
-) {
+// Function qui permet de supprimer un tournoi.
+export async function DELETE(req: Request, context: { params: Promise<{ id: string }> }) {
   const session = await auth();
 
   if (!session?.user?.email) {
@@ -85,33 +80,59 @@ export async function DELETE(
   }
 
   const params = await context.params;
-  const id = parseInt(params.id, 10);
-
-  if (isNaN(id)) {
+  const idSchema = z.coerce.number().int().positive();
+  const parsedId = idSchema.safeParse(params.id);
+  if (!parsedId.success) {
     return NextResponse.json({ error: "ID invalide" }, { status: 400 });
   }
+  const id = parsedId.data;
 
-  const tournoi = await prisma.tournament.findUnique({
-    where: { id },
-    include: { createdBy: true },
-  });
+  let tournoi;
+  try {
+    tournoi = await prisma.tournament.findUnique({
+      where: { id, isDeleted: false },
+      include: { createdBy: true },
+    });
+  } catch (err: unknown) {
+    logger.error("tournament_delete_find_erreur", { message: err instanceof Error ? err.message : String(err) });
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
+  }
 
   if (!tournoi) {
     return NextResponse.json({ error: "Tournoi introuvable" }, { status: 404 });
   }
 
-  if (tournoi.createdBy.email !== session.user.email) {
+  if (tournoi.createdBy.isDeleted || String(tournoi.createdById) !== session.user.id) {
     return NextResponse.json({ error: "Accès interdit" }, { status: 403 });
   }
 
+  if (tournoi.winnerId) {
+    return NextResponse.json(
+      { error: "Le tournoi est terminé et ne peut plus être supprimé." },
+      { status: 400 },
+    );
+  }
+
   try {
-    await prisma.tournament.delete({
-      where: { id },
+    await prisma.$transaction(async (tx) => {
+      await tx.tournament.update({
+        where: { id },
+        data: { isDeleted: true },
+      });
+
+      await tx.user.updateMany({
+        where: { id: tournoi.createdById, tokensUsedThisMonth: { gt: 0 } },
+        data: {
+          tokensUsedThisMonth: {
+            decrement: 1,
+          },
+        },
+      });
     });
 
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error("Erreur DELETE tournoi :", err);
+    return NextResponse.json({ success: true, refunded: true });
+  } catch (err: unknown) {
+    logger.error("tournament_delete_erreur", { message: err instanceof Error ? err.message : String(err) });
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

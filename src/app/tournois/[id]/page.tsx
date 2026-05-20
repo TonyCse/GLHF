@@ -1,8 +1,37 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import TournamentDetailClient from "@/components/TournamentDetailClient";
 import { auth } from "@/lib/auth";
 import { refreshUserTokensIfNeeded } from "@/lib/tokens";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const tournoi = await prisma.tournament.findUnique({
+    where: { id: parseInt(id, 10) },
+    select: { name: true, description: true },
+  });
+
+  if (!tournoi) {
+    return {
+      title: "Tournoi introuvable | GLHF",
+      alternates: { canonical: "/tournois" },
+    };
+  }
+
+  return {
+    title: `${tournoi.name} | GLHF`,
+    description: tournoi.description || "Consultez les détails et le bracket de ce tournoi GLHF.",
+    alternates: {
+      canonical: `/tournois/${id}`,
+    },
+  };
+}
 
 const GAME_LABELS: Record<string, string> = {
   LEAGUE_OF_LEGENDS: "League of Legends",
@@ -22,7 +51,7 @@ const getBackgroundImage = (game: string) => {
     MARVELS_RIVALS: "/images/marvel_bg.webp",
     MINECRAFT: "/images/minecraft_bg.webp",
   };
-  return map[game] || "/images/default.jpg";
+  return map[game] || "/images/default.svg";
 };
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
@@ -109,11 +138,17 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
   return (
     <div className="py-10 bg-[#232426] text-white flex flex-col items-center px-6">
-      <div className="w-full max-w-5xl bg-gradient-to-br from-[#1c1d1f] to-[#2a2b2f] p-8 rounded-xl shadow-xl border border-[#8F60D0]/20">
-
-        <h1 className="text-4xl font-bold mb-8 text-center">
-          {tournoi.name}
-        </h1>
+      <nav aria-label="Fil d'Ariane" className="w-full max-w-5xl mb-4 text-sm text-gray-400">
+        <ol className="flex items-center gap-2">
+          <li><Link href="/" className="hover:text-[#8F60D0] transition-colors">Accueil</Link></li>
+          <li aria-hidden="true">/</li>
+          <li><Link href="/tournois" className="hover:text-[#8F60D0] transition-colors">Tournois</Link></li>
+          <li aria-hidden="true">/</li>
+          <li aria-current="page" className="text-white truncate max-w-50">{tournoi.name}</li>
+        </ol>
+      </nav>
+      <div className="w-full max-w-5xl bg-linear-to-br from-[#1c1d1f] to-[#2a2b2f] p-8 rounded-xl shadow-xl border border-[#8F60D0]/20">
+        <h1 className="text-4xl font-bold mb-8 text-center">{tournoi.name}</h1>
         <TournamentDetailClient
           tournoiId={tournoi.id}
           name={tournoi.name}

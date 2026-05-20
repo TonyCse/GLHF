@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -65,14 +65,14 @@ const getBackgroundImage = (game: string) => {
     MARVELS_RIVALS: "/images/marvel_bg.webp",
     MINECRAFT: "/images/minecraft_bg.webp",
   };
-  return map[game] || "/images/default.jpg";
+  return map[game] || "/images/default.svg";
 };
 
 const STATUS_LABELS: Record<TournamentStatus, string> = {
   RECRUITING: "Recrutement",
   FULL: "Complet",
   IN_PROGRESS: "En cours",
-  FINISHED: "Termine",
+  FINISHED: "Terminé",
 };
 
 const STATUS_DOT: Record<TournamentStatus, string> = {
@@ -88,6 +88,13 @@ const STATUS_ORDER: Record<TournamentStatus, number> = {
   IN_PROGRESS: 2,
   FINISHED: 3,
 };
+
+const DATE_FORMATTER = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris" });
+const TIME_FORMATTER = new Intl.DateTimeFormat("fr-FR", {
+  timeZone: "Europe/Paris",
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 const getStatus = (tournoi: Tournament): TournamentStatus => {
   const participantsCount = tournoi.participantsCount ?? tournoi.participants?.length ?? 0;
@@ -123,6 +130,7 @@ export default function TournamentList({
   const [gameFilter, setGameFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const itemsPerPage = 10;
+  const hasActiveFilters = gameFilter !== "ALL" || statusFilter !== "ALL";
 
   const searchParams = useSearchParams();
   const gameFromURL = searchParams.get("game");
@@ -150,10 +158,8 @@ export default function TournamentList({
         });
 
         setTournois(sorted);
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          console.error("Erreur recuperation tournois :", err);
-        }
+      } catch {
+        // Erreur silencieuse
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -172,11 +178,8 @@ export default function TournamentList({
         const maxPlayers = Math.max(tournoi.maxPlayers, 1);
         const progress = Math.min((participantsCount / maxPlayers) * 100, 100);
         const dateObj = new Date(tournoi.date);
-        const dateStr = dateObj.toLocaleDateString();
-        const timeStr = dateObj.toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+        const dateStr = DATE_FORMATTER.format(dateObj);
+        const timeStr = TIME_FORMATTER.format(dateObj);
 
         return {
           ...tournoi,
@@ -187,7 +190,7 @@ export default function TournamentList({
           progress,
         };
       }),
-    [tournois]
+    [tournois],
   );
 
   const filteredTournois = useMemo(
@@ -201,7 +204,7 @@ export default function TournamentList({
           if (statusFilter === "ALL") return true;
           return t.status === statusFilter;
         }),
-    [derivedTournois, gameFilter, statusFilter]
+    [derivedTournois, gameFilter, statusFilter],
   );
 
   const totalPages = Math.ceil(filteredTournois.length / itemsPerPage);
@@ -209,23 +212,27 @@ export default function TournamentList({
   const indexOfFirst = indexOfLast - itemsPerPage;
   const currentTournois = useMemo(
     () => filteredTournois.slice(indexOfFirst, indexOfLast),
-    [filteredTournois, indexOfFirst, indexOfLast]
+    [filteredTournois, indexOfFirst, indexOfLast],
   );
 
   if (loading) {
-    return <p className="text-center text-gray-400 text-lg">Chargement...</p>;
+    return <p className="text-center text-white text-lg">Chargement...</p>;
   }
 
   return (
     <div className="py-8 sm:py-10 bg-[#232426] text-white flex flex-col items-center px-4 sm:px-6">
       <div className="w-full max-w-6xl bg-[#1c1d1f] p-5 sm:p-8 rounded-xl shadow-xl border border-[#2a2c30]">
-        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-8 text-center">
+        <h1 className="text-3xl sm:text-3xl md:text-4xl font-bold text-white mb-8 text-center">
           Liste des tournois
         </h1>
 
         {showTokensWidget && (
           <div className="mb-8">
-            <TokensWidget compact className="max-w-md mx-auto" initialTokensInfo={initialTokensInfo} />
+            <TokensWidget
+              compact
+              className="max-w-md mx-auto"
+              initialTokensInfo={initialTokensInfo}
+            />
           </div>
         )}
 
@@ -269,13 +276,28 @@ export default function TournamentList({
               <option value="RECRUITING">Phase de recrutement</option>
               <option value="FULL">Tournois complets</option>
               <option value="IN_PROGRESS">Tournois en cours</option>
-              <option value="FINISHED">Tournois termines</option>
+              <option value="FINISHED">Tournois terminés</option>
             </select>
           </div>
         </div>
 
         {filteredTournois.length === 0 ? (
-          <p className="text-center text-gray-400 text-lg">Aucun tournoi trouve.</p>
+          <div className="flex flex-col items-center gap-4 text-center text-white text-lg">
+            <p>Aucun tournoi trouvé.</p>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setGameFilter("ALL");
+                  setStatusFilter("ALL");
+                  setCurrentPage(1);
+                }}
+                className="rounded-lg border border-[#2a2c30] px-4 py-2 text-sm text-white transition hover:border-[#8F60D0] hover:text-[#8F60D0]"
+              >
+                Supprimer les filtres
+              </button>
+            )}
+          </div>
         ) : (
           <>
             <div className="space-y-4">
@@ -291,7 +313,7 @@ export default function TournamentList({
                   <Link
                     key={tournoi.id}
                     href={`/tournois/${tournoi.id}`}
-                    className="relative block overflow-hidden rounded-2xl border border-[#2a2c30] bg-[#1c1d1f] shadow-lg transition hover:border-[#8F60D0]/50"
+                    className="relative block overflow-hidden rounded-2xl border border-[#2a2c30] bg-[#1c1d1f] shadow-lg transition hover:border-[#8F60D0]/50 focus:outline-none focus:ring-2 focus:ring-[#8F60D0] focus:ring-offset-2 focus:ring-offset-[#232426]"
                   >
                     <Image
                       src={getBackgroundImage(tournoi.game)}
@@ -304,7 +326,7 @@ export default function TournamentList({
                       }`}
                     />
                     <div
-                      className={`absolute inset-0 bg-gradient-to-r ${
+                      className={`absolute inset-0 bg-linear-to-r ${
                         status === "FINISHED"
                           ? "from-black/90 via-[#1c1d1f]/85 to-[#1c1d1f]/75"
                           : "from-black/80 via-[#1c1d1f]/75 to-[#1c1d1f]/60"
@@ -313,11 +335,11 @@ export default function TournamentList({
 
                     <div className="relative z-10 p-4 sm:p-5">
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="text-xs uppercase tracking-[0.25em] text-gray-200 border border-white/10 rounded-full px-3 py-1 bg-black/40">
+                        <div className="text-xs uppercase tracking-[0.25em] text-white border border-white/10 rounded-full px-3 py-1 bg-black/40">
                           {GAME_LABELS[tournoi.game] || tournoi.game}
                         </div>
-                 
-                        <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-gray-200 border border-white/10 rounded-full px-3 py-1 bg-black/40">
+
+                        <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-white border border-white/10 rounded-full px-3 py-1 bg-black/40">
                           <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status]}`} />
                           {STATUS_LABELS[status]}
                         </div>
@@ -325,56 +347,61 @@ export default function TournamentList({
 
                       <div className="mt-4 flex flex-col gap-4 md:flex-row md:justify-between md:items-center">
                         <div className="flex flex-col">
-                        <h2 className="text-xl md:text-2xl font-semibold text-white">{tournoi.name}</h2>
-                        {tournoi.description && (
-                          <p className="text-base text-gray-200 mt-2 line-clamp-2">
-                            {tournoi.description}
-                          </p>
-                        )}
+                          <h2 className="text-xl md:text-2xl font-semibold text-white">
+                            {tournoi.name}
+                          </h2>
+                          {tournoi.description && (
+                            <p className="text-base text-white mt-2 line-clamp-2">
+                              {tournoi.description}
+                            </p>
+                          )}
                         </div>
                         <div>
-                             {status === "FINISHED" && tournoi.winner?.pseudo && (
-                        <div className="flex w-full flex-wrap items-center gap-3 rounded-xl border border-[#8F60D0]/40 bg-[#1c1d1f]/80 px-3 py-2 shadow-lg sm:w-auto">
-                          <div className="relative h-10 w-10 overflow-hidden rounded-full border-2 border-[#8F60D0] bg-[#232426]">
-                            <Image
-                              src={tournoi.winner.avatarUrl || "/avatars/default.png"}
-                              alt={`Vainqueur ${tournoi.winner.pseudo}`}
-                              fill
-                              sizes="40px"
-                              className="object-cover"
-                            />
-                          </div>
-                          <div className="flex flex-col leading-tight">
-                            <span className="text-xs uppercase tracking-wider text-gray-300">Vainqueur</span>
-                            <span className="font-semibold text-base text-white">{tournoi.winner.pseudo}</span>
-                          </div>
-                          <Trophy size={18} className="text-[#A855F7]" />
-                        </div>
-                      )}
-
+                          {status === "FINISHED" && tournoi.winner?.pseudo && (
+                            <div className="flex w-full flex-wrap items-center gap-3 rounded-xl border border-[#8F60D0]/40 bg-[#1c1d1f]/80 px-3 py-2 shadow-lg sm:w-auto">
+                              <div className="relative h-10 w-10 overflow-hidden rounded-full border-2 border-[#8F60D0] bg-[#232426]">
+                                <Image
+                                  src={tournoi.winner.avatarUrl || "/avatars/default.svg"}
+                                  alt={`Vainqueur ${tournoi.winner.pseudo}`}
+                                  fill
+                                  sizes="40px"
+                                  className="object-cover"
+                                />
+                              </div>
+                              <div className="flex flex-col leading-tight">
+                                <span className="text-xs uppercase tracking-wider text-white">
+                                  Vainqueur
+                                </span>
+                                <span className="font-semibold text-base text-white">
+                                  {tournoi.winner.pseudo}
+                                </span>
+                              </div>
+                              <Trophy size={18} className="text-[#A855F7]" aria-hidden="true" />
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      <div className="mt-5 grid grid-cols-1 gap-3 text-base text-gray-200 md:grid-cols-3">
+                      <div className="mt-5 grid grid-cols-1 gap-3 text-base text-white md:grid-cols-3">
                         <div className="flex items-center gap-2">
-                          <User size={16} className="text-[#A855F7]" />
-                          <span className="text-gray-300">Organisateur:</span>
+                          <User size={16} className="text-[#A855F7]" aria-hidden="true" />
+                          <span className="text-white">Organisateur:</span>
                           <span className="text-white font-medium truncate">
                             {tournoi.createdBy?.pseudo || "Inconnu"}
                           </span>
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <Calendar size={16} className="text-[#A855F7]" />
-                          <span className="text-gray-300">Date:</span>
+                          <Calendar size={16} className="text-[#A855F7]" aria-hidden="true" />
+                          <span className="text-white">Date:</span>
                           <span className="text-white font-medium">
                             {dateStr} {timeStr}
                           </span>
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <Users size={16} className="text-[#A855F7]" />
-                          <span className="text-gray-300">Participants:</span>
+                          <Users size={16} className="text-[#A855F7]" aria-hidden="true" />
+                          <span className="text-white">Participants:</span>
                           <span className="text-white font-medium">
                             {participantsCount}/{tournoi.maxPlayers}
                           </span>
@@ -384,14 +411,12 @@ export default function TournamentList({
                       <div className="mt-4 flex items-center gap-3">
                         <div className="h-1.5 flex-1 rounded-full bg-black/40">
                           <div
-                            className="h-1.5 rounded-full bg-gradient-to-r from-[#8F60D0] to-[#A855F7]"
+                            className="h-1.5 rounded-full bg-linear-to-r from-[#8F60D0] to-[#A855F7]"
                             style={{ width: `${progress}%` }}
                           />
                         </div>
-                        <span className="text-xs text-gray-300">{Math.round(progress)}%</span>
+                        <span className="text-xs text-white">{Math.round(progress)}%</span>
                       </div>
-
-          
                     </div>
                   </Link>
                 );
@@ -402,19 +427,21 @@ export default function TournamentList({
               <button
                 onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
+                aria-label="Page précédente des tournois"
                 className={`px-4 py-2 rounded-lg bg-[#232426] text-white transition-all cursor-pointer
                 ${currentPage === 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-[#8F60D0]"}`}
               >
-                Precedent
+                Précédent
               </button>
 
-              <span className="text-white font-medium">
+              <span className="text-white font-medium" aria-live="polite" aria-atomic="true">
                 Page {currentPage} / {totalPages}
               </span>
 
               <button
                 onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages}
+                aria-label="Page suivante des tournois"
                 className={`px-4 py-2 rounded-lg bg-[#232426] text-white transition-all cursor-pointer
                 ${currentPage === totalPages ? "opacity-40 cursor-not-allowed" : "hover:bg-[#8F60D0]"}`}
               >

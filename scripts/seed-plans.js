@@ -1,28 +1,36 @@
-const { PrismaClient } = require('@prisma/client');
+/* eslint-disable @typescript-eslint/no-require-imports */
+const { PrismaClient } = require("@prisma/client");
 
 async function main() {
   const prisma = new PrismaClient();
   try {
     const plansData = [
       {
-        name: 'Plan Bronze',
-        slug: 'bronze',
+        name: "Plan Gratuit",
+        slug: "free",
+        priceCents: 0,
+        currency: "EUR",
+        tokensPerMonth: 3,
+      },
+      {
+        name: "Plan Bronze",
+        slug: "bronze",
         priceCents: 99,
-        currency: 'EUR',
+        currency: "EUR",
         tokensPerMonth: 5,
       },
       {
-        name: 'Plan Argent',
-        slug: 'silver',
+        name: "Plan Argent",
+        slug: "silver",
         priceCents: 149,
-        currency: 'EUR',
+        currency: "EUR",
         tokensPerMonth: 8,
       },
       {
-        name: 'Plan Or',
-        slug: 'gold',
+        name: "Plan Or",
+        slug: "gold",
         priceCents: 199,
-        currency: 'EUR',
+        currency: "EUR",
         tokensPerMonth: 30,
       },
     ];
@@ -38,22 +46,22 @@ async function main() {
         },
         create: p,
       });
-      console.log('Upserted plan:', upserted.slug, upserted.id);
+      console.log("Upserted plan:", upserted.slug, upserted.id);
     }
 
-    const all = await prisma.plan.findMany({ orderBy: { priceCents: 'asc' } });
-    console.log('\nPlans now in DB:', all.length);
+    const all = await prisma.plan.findMany({ orderBy: { priceCents: "asc" } });
+    console.log("\nPlans now in DB:", all.length);
     console.table(
       all.map((a) => ({
         id: a.id,
         name: a.name,
         slug: a.slug,
-        price: (a.priceCents / 100).toFixed(2) + ' EUR',
+        price: (a.priceCents / 100).toFixed(2) + " EUR",
         tokens: a.tokensPerMonth,
-      }))
+      })),
     );
   } catch (e) {
-    console.error('Seeding error:', e);
+    console.error("Seeding error:", e);
     process.exitCode = 1;
   } finally {
     await prisma.$disconnect();

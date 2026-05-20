@@ -7,7 +7,7 @@ export default function Loading() {
         <div className="w-20 h-20 rounded-full border border-[#2a2c30] bg-[radial-gradient(circle_at_30%_30%,#2a2c30,#1c1d1f_70%)] grid place-items-center shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
           <Image
             src="/images/logo.webp"
-            alt="GLHF"
+            alt="Logo GLHF, plateforme de tournois e-sports"
             width={72}
             height={72}
             className="drop-shadow-[0_6px_12px_rgba(143,96,208,0.35)]"

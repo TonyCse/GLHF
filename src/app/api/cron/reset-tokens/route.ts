@@ -1,12 +1,17 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
-export async function GET(req: Request) {
-  // Vérifier que l'appel vient d'un cron job ou d'un service autorisé
-  const authHeader = req.headers.get('authorization');
+function isAuthorizedCron(req: Request): boolean {
+  const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
-  
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!authHeader || !cronSecret) return false;
+  return authHeader === `Bearer ${cronSecret}`;
+}
+
+// Function qui permet d'executer le reset mensuel via cron.
+export async function GET(req: Request) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
 
@@ -15,48 +20,35 @@ export async function GET(req: Request) {
     const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     firstDayOfMonth.setHours(0, 0, 0, 0);
 
-    // Reset les tokens pour tous les utilisateurs qui n'ont pas encore été resetés ce mois-ci
+    // Reset les tokens pour tous les utilisateurs qui n'ont pas encore ete resetes ce mois-ci
     const result = await prisma.user.updateMany({
       where: {
-        OR: [
-          { tokensMonthStart: null },
-          { tokensMonthStart: { lt: firstDayOfMonth } }
-        ]
+        OR: [{ tokensMonthStart: null }, { tokensMonthStart: { lt: firstDayOfMonth } }],
       },
       data: {
         tokensUsedThisMonth: 0,
         tokensMonthStart: firstDayOfMonth,
-      }
+      },
     });
-
-    console.log(`Reset mensuel des tokens effectué: ${result.count} utilisateurs mis à jour`);
 
     return NextResponse.json({
       success: true,
       message: `${result.count} utilisateurs mis à jour`,
       resetDate: firstDayOfMonth.toISOString(),
     });
-
-  } catch (error) {
-    console.error("Erreur lors du reset mensuel des tokens:", error);
-    return NextResponse.json(
-      { error: "Erreur lors du reset mensuel" },
-      { status: 500 }
-    );
+  } catch (err: unknown) {
+    logger.error("cron_reset_tokens_erreur", { message: err instanceof Error ? err.message : String(err) });
+    return NextResponse.json({ error: "Erreur lors du reset mensuel" }, { status: 500 });
   }
 }
 
-// Fonction utilitaire pour reset manuellement (admin uniquement)
+// Function qui permet un reset manuel (admin uniquement).
 export async function POST(req: Request) {
-  try {
-    const { authorization } = req.headers as { authorization?: string };
-    
-    if (!authorization || !authorization.startsWith('Bearer ')) {
-      return NextResponse.json({ error: "Token manquant" }, { status: 401 });
-    }
+  if (!isAuthorizedCron(req)) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
 
-    // En mode développement ou pour les tests, permettre le reset manuel
-    // En production, cette route devrait être sécurisée différemment
+  try {
     const currentDate = new Date();
     const firstDayOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
     firstDayOfMonth.setHours(0, 0, 0, 0);
@@ -65,7 +57,7 @@ export async function POST(req: Request) {
       data: {
         tokensUsedThisMonth: 0,
         tokensMonthStart: firstDayOfMonth,
-      }
+      },
     });
 
     return NextResponse.json({
@@ -73,14 +65,8 @@ export async function POST(req: Request) {
       message: `Reset forcé: ${result.count} utilisateurs mis à jour`,
       resetDate: firstDayOfMonth.toISOString(),
     });
-
-  } catch (error) {
-    console.error("Erreur lors du reset forcé des tokens:", error);
-    return NextResponse.json(
-      { error: "Erreur lors du reset forcé" },
-      { status: 500 }
-    );
+  } catch (err: unknown) {
+    logger.error("cron_reset_force_erreur", { message: err instanceof Error ? err.message : String(err) });
+    return NextResponse.json({ error: "Erreur lors du reset forcé" }, { status: 500 });
   }
 }
-
-

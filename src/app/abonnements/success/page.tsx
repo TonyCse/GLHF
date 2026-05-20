@@ -1,11 +1,17 @@
-// src/app/abonnements/success/page.tsx
+﻿// Page de succes d'abonnement.
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getPaypalSubscription } from "@/lib/paypal";
 
+export const metadata: Metadata = {
+  title: "Abonnement confirmé | GLHF",
+  description: "Votre abonnement GLHF a été activé avec succès.",
+};
+
 type Props = {
-  // ✅ en Next 15, searchParams est une Promise
   searchParams: Promise<{
     subscription_id?: string;
     token?: string;
@@ -13,16 +19,16 @@ type Props = {
   }>;
 };
 
+// Finalise l'abonnement et affiche la confirmation
 export default async function SuccessPage({ searchParams }: Props) {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect("/signin");
+    redirect("/connexion");
   }
 
-  // ✅ on "résout" les query params avant de les lire
+  // On resolve les query params avant de les lire
   const params = await searchParams;
-  const subscriptionId =
-    params.subscription_id || params.ba_token || params.token;
+  const subscriptionId = params.subscription_id || params.ba_token || params.token;
 
   if (!subscriptionId) {
     redirect("/abonnements?error=missing_subscription");
@@ -57,19 +63,16 @@ export default async function SuccessPage({ searchParams }: Props) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center text-white">
         <h1 className="text-4xl font-bold mb-4">Forfait activé 🎉</h1>
-        <p className="text-gray-300 mb-6">
-          Ton nouveau forfait GLHF est maintenant actif.
-        </p>
-        <a
+        <p className="text-white mb-6">Ton nouveau forfait GLHF est maintenant actif.</p>
+        <Link
           href="/"
           className="rounded-xl bg-[#8F60D0] px-6 py-3 font-semibold hover:bg-[#a27ae0] transition"
         >
           Retour à l&apos;accueil
-        </a>
+        </Link>
       </main>
     );
-  } catch (e) {
-    console.error(e);
+  } catch {
     redirect("/abonnements?error=unknown");
   }
 }
