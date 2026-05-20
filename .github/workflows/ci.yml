@@ -19,3 +19,10 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run build
+        env:
+          DATABASE_URL: "mysql://user:password@localhost:3306/glhf"
+          NEXTAUTH_SECRET: "ci-secret-placeholder"
+          PAYPAL_CLIENT_ID: "ci-placeholder"
+          PAYPAL_CLIENT_SECRET: "ci-placeholder"
+          PAYPAL_BASE_URL: "https://api-m.sandbox.paypal.com"
+          PAYPAL_WEBHOOK_ID: "ci-placeholder"
