@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Role } from "@prisma/client";
+import { useDialog } from "@/components/DialogProvider";
 
 interface User {
   id: number;
@@ -35,8 +36,24 @@ interface Props {
   viewerRole: Role;
 }
 
+function getNextQuickRole(role: Role, isSuperAdmin: boolean): Role {
+  if (role === "SUPER_ADMIN") return "ADMIN";
+  if (role === "ADMIN") return isSuperAdmin ? "SUPER_ADMIN" : "USER";
+  return "ADMIN";
+}
+
+function getQuickRoleActionLabel(role: Role, isSuperAdmin: boolean) {
+  if (role === "SUPER_ADMIN") return "-> Retrograder en administrateur";
+  if (role === "ADMIN") {
+    return isSuperAdmin ? "-> Promouvoir super admin" : "-> Retrograder en utilisateur";
+  }
+  return "-> Promouvoir administrateur";
+}
+
+// Formulaire de modification d'un utilisateur
 export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) {
   const router = useRouter();
+  const { confirm, alert } = useDialog();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     pseudo: user.pseudo,
@@ -78,10 +95,11 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
         } else {
           setPlans([]);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (!mounted) return;
-        console.error("Erreur lors de la recuperation des plans:", error);
-        setPlansError(error?.message ?? "Erreur lors de la recuperation des plans");
+        const message =
+          error instanceof Error ? error.message : "Erreur lors de la récupération des plans";
+        setPlansError(message);
       } finally {
         if (!mounted) return;
         setPlansLoading(false);
@@ -111,22 +129,30 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
       });
 
       if (response.ok) {
-        const result = await response.json();
-        
-        // Mise à jour dynamique des stats si callback fourni
+        await response.json();
+
+        // Mise a jour dynamique des stats si callback fourni
         if (onUserUpdate) {
           onUserUpdate(formData);
         }
-        
+
         router.refresh();
-        alert("Utilisateur mis à jour avec succès !");
+        await alert({
+          title: "Mise à jour réussie",
+          description: "L'utilisateur a été mis à jour avec succès.",
+        });
       } else {
         const error = await response.json();
-        alert(`Erreur: ${error.message || "Impossible de mettre à jour l'utilisateur"}`);
+        await alert({
+          title: "Mise à jour impossible",
+          description: error.message || "Impossible de mettre à jour l'utilisateur.",
+        });
       }
-    } catch (error) {
-      console.error("Erreur lors de la mise à jour:", error);
-      alert("Erreur lors de la mise à jour de l'utilisateur");
+    } catch {
+      await alert({
+        title: "Erreur",
+        description: "Erreur lors de la mise à jour de l'utilisateur.",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -135,7 +161,13 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
   const handlePlanApply = async () => {
     if (!canManagePayments) return;
     if (!selectedPlanId || selectedPlanId === user.plan?.id) return;
-    if (!confirm("Changer le forfait de cet utilisateur ?")) return;
+    const ok = await confirm({
+      title: "Changer le forfait",
+      description: "Le nouveau forfait sera appliqué immédiatement.",
+      confirmText: "Confirmer",
+      cancelText: "Annuler",
+    });
+    if (!ok) return;
 
     setPlanActionLoading(true);
     try {
@@ -159,10 +191,16 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
         });
         setFormData((prev) => ({ ...prev, tokensUsedThisMonth: 0 }));
       }
-      alert("Forfait mis a jour.");
-    } catch (error: any) {
-      console.error("Erreur lors du changement de forfait:", error);
-      alert(`Erreur: ${error?.message ?? "Impossible de changer le forfait"}`);
+      await alert({
+        title: "Forfait mis à jour",
+        description: "Le forfait de l'utilisateur a été mis à jour.",
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Impossible de changer le forfait.";
+      await alert({
+        title: "Changement impossible",
+        description: message,
+      });
     } finally {
       setPlanActionLoading(false);
     }
@@ -171,7 +209,14 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
   const handlePlanCancel = async () => {
     if (!canManagePayments) return;
     if (!user.plan) return;
-    if (!confirm("Annuler le forfait de cet utilisateur ?")) return;
+    const ok = await confirm({
+      title: "Annuler l'abonnement",
+      description: "L'abonnement sera annulé pour cet utilisateur.",
+      confirmText: "Annuler l'abonnement",
+      cancelText: "Garder",
+      variant: "danger",
+    });
+    if (!ok) return;
 
     setPlanActionLoading(true);
     try {
@@ -186,10 +231,16 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
       onUserUpdate?.({ plan: null, tokensUsedThisMonth: 0 });
       setFormData((prev) => ({ ...prev, tokensUsedThisMonth: 0 }));
       setSelectedPlanId(null);
-      alert("Abonnement annule.");
-    } catch (error: any) {
-      console.error("Erreur lors de l'annulation du forfait:", error);
-      alert(`Erreur: ${error?.message ?? "Impossible d'annuler le forfait"}`);
+      await alert({
+        title: "Abonnement annulé",
+        description: "L'abonnement a été annulé pour cet utilisateur.",
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Impossible d'annuler le forfait.";
+      await alert({
+        title: "Annulation impossible",
+        description: message,
+      });
     } finally {
       setPlanActionLoading(false);
     }
@@ -197,9 +248,17 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
 
   const handleToggleDelete = async () => {
     const action = user.isDeleted ? "restaurer" : "supprimer";
-    if (!confirm(`Êtes-vous sûr de vouloir ${action} cet utilisateur ?`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: `${action === "supprimer" ? "Supprimer" : "Restaurer"} l'utilisateur`,
+      description:
+        action === "supprimer"
+          ? "Le compte sera désactivé et masqué."
+          : "Le compte sera restauré et réactivé.",
+      confirmText: action === "supprimer" ? "Supprimer" : "Restaurer",
+      cancelText: "Annuler",
+      variant: action === "supprimer" ? "danger" : "default",
+    });
+    if (!ok) return;
 
     setIsLoading(true);
     try {
@@ -211,38 +270,62 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
         router.refresh();
       } else {
         const error = await response.json();
-        alert(`Erreur: ${error.message || `Impossible de ${action} l'utilisateur`}`);
+        await alert({
+          title: "Action impossible",
+          description: error.message || `Impossible de ${action} l'utilisateur.`,
+        });
       }
-    } catch (error) {
-      console.error(`Erreur lors de ${action}:`, error);
-      alert(`Erreur lors de ${action} de l'utilisateur`);
+    } catch {
+      await alert({
+        title: "Erreur",
+        description: `Erreur lors de ${action} de l'utilisateur.`,
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleToggleRole = async () => {
-    if (user.role === "SUPER_ADMIN") return;
-    const newRole = user.role === "ADMIN" ? "USER" : "ADMIN";
-    if (!confirm(`Êtes-vous sûr de vouloir changer le rôle vers ${newRole} ?`)) {
-      return;
-    }
+    const newRole = getNextQuickRole(user.role, isSuperAdmin);
+    const ok = await confirm({
+      title: "Changer le rôle",
+      description: `Le rôle sera changé vers ${newRole}.`,
+      confirmText: "Confirmer",
+      cancelText: "Annuler",
+    });
+    if (!ok) return;
 
     setIsLoading(true);
     try {
       const response = await fetch(`/api/admin/users/${user.id}/toggle-role`, {
         method: "POST",
+        redirect: "manual",
       });
 
-      if (response.ok) {
+      const location = response.headers.get("location") || "";
+      if (location.includes("err=admin_role_restricted")) {
+        await alert({
+          title: "Action réservée",
+          description: "Vous êtes admin. La gestion des rôles est réservée au super admin.",
+        });
+      } else if (response.ok || response.type === "opaqueredirect" || response.status === 307 || response.status === 302) {
         router.refresh();
       } else {
-        const error = await response.json();
-        alert(`Erreur: ${error.message || "Impossible de changer le rôle"}`);
+        let message = "Impossible de changer le rôle.";
+        try {
+          const error = await response.json();
+          if (error.message) message = error.message;
+        } catch { /* ignore */ }
+        await alert({
+          title: "Changement impossible",
+          description: message,
+        });
       }
-    } catch (error) {
-      console.error("Erreur lors du changement de rôle:", error);
-      alert("Erreur lors du changement de rôle");
+    } catch {
+      await alert({
+        title: "Erreur",
+        description: "Erreur lors du changement de rôle.",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -253,7 +336,7 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
       <form onSubmit={handleSubmit} className="space-y-6">
         {isProtectedUser && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200 px-3 py-2 text-sm">
-            Ce compte est protege. Seul le super admin peut le modifier.
+            Ce compte est protégé. Seul le super admin peut le modifier.
           </div>
         )}
         {/* Informations principales */}
@@ -273,6 +356,8 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
                 onChange={(e) => setFormData({ ...formData, pseudo: e.target.value })}
                 className="w-full rounded-xl bg-[#232426] border border-[#2a2c30] px-4 py-3 text-white outline-none focus:border-[#8F60D0] transition-colors"
                 required
+                minLength={3}
+                maxLength={20}
                 disabled={isFormDisabled}
                 placeholder="Nom d'utilisateur unique"
               />
@@ -308,17 +393,19 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
               placeholder="https://exemple.com/avatar.jpg"
               disabled={isFormDisabled}
             />
-            <p className="text-xs text-gray-500 mt-1">Laissez vide pour utiliser l&apos;avatar par défaut</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Laissez vide pour utiliser l&apos;avatar par défaut
+            </p>
           </div>
         </div>
 
-        {/* Permissions et rôle */}
+        {/* Permissions et role */}
         <div className="space-y-4">
           <h3 className="text-lg font-medium text-white flex items-center gap-2">
             🛡️ Permissions et rôle
           </h3>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-            {/* Rôle */}
+            {/* Role */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Rôle d&apos;utilisateur
@@ -345,7 +432,9 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
               <input
                 type="number"
                 value={formData.ranking}
-                onChange={(e) => setFormData({ ...formData, ranking: parseInt(e.target.value) || 0 })}
+                onChange={(e) =>
+                  setFormData({ ...formData, ranking: parseInt(e.target.value) || 0 })
+                }
                 className="w-full rounded-xl bg-[#232426] border border-[#2a2c30] px-4 py-3 text-white outline-none focus:border-[#8F60D0] transition-colors"
                 min="0"
                 disabled={isFormDisabled}
@@ -361,7 +450,7 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
             📊 Statistiques de jeu
           </h3>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-            {/* Tournois gagnés */}
+            {/* Tournois gagnes */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 Tournois gagnés
@@ -369,7 +458,9 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
               <input
                 type="number"
                 value={formData.tournamentsWon}
-                onChange={(e) => setFormData({ ...formData, tournamentsWon: parseInt(e.target.value) || 0 })}
+                onChange={(e) =>
+                  setFormData({ ...formData, tournamentsWon: parseInt(e.target.value) || 0 })
+                }
                 className="w-full rounded-xl bg-[#232426] border border-[#2a2c30] px-4 py-3 text-white outline-none focus:border-[#8F60D0] transition-colors"
                 min="0"
                 disabled={isFormDisabled}
@@ -377,15 +468,15 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
               />
             </div>
 
-            {/* Matches gagnés */}
+            {/* Matches gagnes */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Matches gagnés
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Matches gagnés</label>
               <input
                 type="number"
                 value={formData.matchesWon}
-                onChange={(e) => setFormData({ ...formData, matchesWon: parseInt(e.target.value) || 0 })}
+                onChange={(e) =>
+                  setFormData({ ...formData, matchesWon: parseInt(e.target.value) || 0 })
+                }
                 className="w-full rounded-xl bg-[#232426] border border-[#2a2c30] px-4 py-3 text-white outline-none focus:border-[#8F60D0] transition-colors"
                 min="0"
                 disabled={isFormDisabled}
@@ -397,14 +488,10 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
 
         {/* Tokens */}
         <div className="space-y-4">
-          <h3 className="text-lg font-medium text-white flex items-center gap-2">
-            Tokens GLHF
-          </h3>
+          <h3 className="text-lg font-medium text-white flex items-center gap-2">Tokens GLHF</h3>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Plan actuel
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Plan actuel</label>
               <div className="rounded-xl bg-[#232426] border border-[#2a2c30] px-4 py-3 text-white">
                 {user.plan?.name ?? "Plan gratuit"} · {tokensPerMonth} tokens/mois
               </div>
@@ -419,8 +506,7 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
                 onChange={(e) =>
                   setFormData({
                     ...formData,
-                    tokensUsedThisMonth:
-                      tokensPerMonth - (parseInt(e.target.value, 10) || 0),
+                    tokensUsedThisMonth: tokensPerMonth - (parseInt(e.target.value, 10) || 0),
                   })
                 }
                 className="w-full rounded-xl bg-[#232426] border border-[#2a2c30] px-4 py-3 text-white outline-none focus:border-[#8F60D0] transition-colors"
@@ -432,7 +518,7 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
                 Mets plus que le plan pour ajouter des tokens bonus.
               </p>
               <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
-                <span>Tokens utilises ce mois: {Math.max(0, formData.tokensUsedThisMonth)}</span>
+                <span>Tokens utilisés ce mois: {Math.max(0, formData.tokensUsedThisMonth)}</span>
                 <button
                   type="button"
                   onClick={() =>
@@ -456,7 +542,7 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
           )}
           {!canManagePayments && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-200 px-3 py-2 text-sm">
-              Gestion des paiements reservee au super admin.
+              Gestion des paiements réservée au super admin.
             </div>
           )}
 
@@ -520,9 +606,7 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
                 Mise à jour...
               </>
             ) : (
-              <>
-                💾 Sauvegarder les modifications
-              </>
+              <>💾 Sauvegarder les modifications</>
             )}
           </button>
         </div>
@@ -538,22 +622,14 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
             onClick={handleToggleRole}
             disabled={isFormDisabled}
             className={`w-full rounded-lg border px-4 py-3 text-sm font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2 ${
-              user.role === "ADMIN"
+              user.role === "SUPER_ADMIN"
+                ? "border-amber-600/40 text-amber-300 hover:border-amber-500 hover:text-amber-200"
+                : user.role === "ADMIN"
                 ? "border-blue-600/40 text-blue-300 hover:border-blue-500 hover:text-blue-200"
                 : "border-purple-600/40 text-purple-300 hover:border-purple-500 hover:text-purple-200"
             } cursor-pointer`}
           >
-            {user.role === "SUPER_ADMIN" ? (
-              <>Super admin</>
-            ) : user.role === "ADMIN" ? (
-              <>
-                ↓ Rétrograder en utilisateur
-              </>
-            ) : (
-              <>
-                ↑ Promouvoir administrateur
-              </>
-            )}
+            <>{getQuickRoleActionLabel(user.role, isSuperAdmin)}</>
           </button>
 
           <button
@@ -566,19 +642,16 @@ export default function UserEditForm({ user, onUserUpdate, viewerRole }: Props) 
             } cursor-pointer`}
           >
             {user.isDeleted ? (
-              <>
-                🔄 Restaurer l&apos;utilisateur
-              </>
+              <>🔄 Restaurer l&apos;utilisateur</>
             ) : (
-              <>
-                🗑️ Supprimer l&apos;utilisateur
-              </>
+              <>🗑️ Supprimer l&apos;utilisateur</>
             )}
           </button>
         </div>
-        
+
         <div className="mt-4 p-3 bg-amber-600/10 border border-amber-600/30 rounded-lg text-amber-300 text-sm">
-          ⚠️ <strong>Attention :</strong> Les actions rapides prennent effet immédiatement et ne nécessitent pas de sauvegarder le formulaire.
+          ⚠️ <strong>Attention :</strong> Les actions rapides prennent effet immédiatement et ne
+          nécessitent pas de sauvegarder le formulaire.
         </div>
       </div>
     </div>

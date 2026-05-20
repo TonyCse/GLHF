@@ -1,26 +1,27 @@
-// src/app/api/admin/users/[id]/toggle-delete/route.ts
+// Route pour basculer le soft-delete d'un utilisateur.
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { z } from "zod";
 
-export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+// Function qui permet de basculer le soft-delete d'un utilisateur.
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
     return NextResponse.redirect(new URL("/admin/users?err=forbidden", req.url));
   }
   const isSuperAdmin = session.user.role === "SUPER_ADMIN";
 
-  const idFromParams = params?.id;
+  const { id: idFromParams } = await params;
   const idFromPath = new URL(req.url).pathname.split("/").filter(Boolean).slice(-2, -1)[0];
-  const id = Number(idFromParams ?? idFromPath);
-  if (!Number.isFinite(id)) {
+  const idSchema = z.coerce.number().int().positive();
+  const parsedId = idSchema.safeParse(idFromParams ?? idFromPath);
+  if (!parsedId.success) {
     return NextResponse.redirect(new URL("/admin/users?err=bad_id", req.url));
   }
+  const id = parsedId.data;
 
-  // on évite de se soft-delete soi-même
+  // On evite de se soft-delete soi-meme
   if (String(session.user.id) === String(id)) {
     return NextResponse.redirect(new URL("/admin/users?err=self_soft_delete_blocked", req.url));
   }
@@ -42,5 +43,13 @@ export async function POST(
   });
 
   const referer = req.headers.get("referer");
-  return NextResponse.redirect(referer ? referer : new URL("/admin/users?ok=soft_toggled", req.url));
+  const appOrigin = new URL(req.url).origin;
+  let safeRedirect = new URL("/admin/users?ok=soft_toggled", req.url).toString();
+  if (referer) {
+    try {
+      const refUrl = new URL(referer);
+      if (refUrl.origin === appOrigin) safeRedirect = referer;
+    } catch { /* URL invalide, on ignore */ }
+  }
+  return NextResponse.redirect(safeRedirect);
 }

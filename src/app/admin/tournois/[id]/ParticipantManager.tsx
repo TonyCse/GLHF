@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { useDialog } from "@/components/DialogProvider";
 
 interface User {
   id: number;
@@ -27,14 +28,21 @@ interface Props {
   onParticipantUpdate?: (participants: Participant[]) => void;
 }
 
-export default function ParticipantManager({ tournamentId, participants, maxPlayers, onParticipantUpdate }: Props) {
+// Gere les participants d'un tournoi
+export default function ParticipantManager({
+  tournamentId,
+  participants,
+  maxPlayers,
+  onParticipantUpdate,
+}: Props) {
   const [searchQuery, setSearchQuery] = useState("");
+  const { alert, confirm } = useDialog();
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [currentParticipants, setCurrentParticipants] = useState(participants);
 
-  const activeParticipants = currentParticipants.filter(p => p.isActive);
+  const activeParticipants = currentParticipants.filter((p) => p.isActive);
 
   // Synchroniser avec les props du parent
   useEffect(() => {
@@ -51,15 +59,15 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
           const users = await response.json();
           setAvailableUsers(users);
         }
-      } catch (error) {
-        console.error("Erreur lors du chargement des utilisateurs:", error);
+      } catch {
+        // Erreur silencieuse
       } finally {
         setIsLoadingUsers(false);
       }
     };
 
     loadAvailableUsers();
-  }, [tournamentId, activeParticipants.length]); // Recharger quand les participants changent
+  }, [tournamentId, activeParticipants.length]);
 
   // Filtrer les utilisateurs selon la recherche
   const filteredUsers = useMemo(() => {
@@ -68,16 +76,19 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
     }
 
     const query = searchQuery.toLowerCase();
-    return availableUsers.filter(user => 
-      user.pseudo.toLowerCase().includes(query) || 
-      user.email.toLowerCase().includes(query)
+    return availableUsers.filter(
+      (user) =>
+        user.pseudo.toLowerCase().includes(query) || user.email.toLowerCase().includes(query),
     );
   }, [availableUsers, searchQuery]);
 
   // Ajouter un participant
   const addParticipant = async (userId: number) => {
     if (activeParticipants.length >= maxPlayers) {
-      alert("Le tournoi a atteint sa capacité maximale !");
+      await alert({
+        title: "Tournoi complet",
+        description: "Le tournoi a atteint sa capacité maximale.",
+      });
       return;
     }
 
@@ -91,42 +102,50 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
 
       if (response.ok) {
         const result = await response.json();
-        
-        // Récupérer l'utilisateur ajouté depuis availableUsers
-        const addedUser = availableUsers.find(user => user.id === userId);
-        
+
+        // Recuperer l'utilisateur ajoute depuis availableUsers
+        const addedUser = availableUsers.find((user) => user.id === userId);
+
         if (addedUser) {
-          // Créer le nouveau participant
+          // Creer le nouveau participant
           const newParticipant: Participant = {
-            id: result.participantId || Date.now(), // Utiliser l'ID retourné par l'API ou un temporaire
+            id: result.participantId || Date.now(),
             userId: userId,
             joinedAt: new Date().toISOString(),
             isActive: true,
-            user: addedUser
+            user: addedUser,
           };
 
-          // Mettre à jour la liste locale des participants
+          // Mettre a jour la liste locale des participants
           const updatedParticipants = [...currentParticipants, newParticipant];
           setCurrentParticipants(updatedParticipants);
-          
+
           // Notifier le composant parent
           if (onParticipantUpdate) {
             onParticipantUpdate(updatedParticipants);
           }
         }
-        
+
         // Retirer l'utilisateur de la liste des disponibles
-        setAvailableUsers(prev => prev.filter(user => user.id !== userId));
+        setAvailableUsers((prev) => prev.filter((user) => user.id !== userId));
         setSearchQuery("");
-        
-        alert("Participant ajouté avec succès !");
+
+        await alert({
+          title: "Participant ajouté",
+          description: "Le participant a été ajouté avec succès.",
+        });
       } else {
         const error = await response.json();
-        alert(`Erreur: ${error.message || "Impossible d'ajouter le participant"}`);
+        await alert({
+          title: "Ajout impossible",
+          description: error.message || "Impossible d'ajouter le participant.",
+        });
       }
-    } catch (error) {
-      console.error("Erreur lors de l'ajout:", error);
-      alert("Erreur lors de l'ajout du participant");
+    } catch {
+      await alert({
+        title: "Erreur",
+        description: "Erreur lors de l'ajout du participant.",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -134,9 +153,14 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
 
   // Supprimer un participant
   const removeParticipant = async (userId: number, userPseudo: string) => {
-    if (!confirm(`Êtes-vous sûr de vouloir enlever ${userPseudo} de ce tournoi ?`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Retirer un participant",
+      description: `Retirer ${userPseudo} de ce tournoi ?`,
+      confirmText: "Retirer",
+      cancelText: "Annuler",
+      variant: "danger",
+    });
+    if (!ok) return;
 
     setIsLoading(true);
     try {
@@ -147,31 +171,39 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
       });
 
       if (response.ok) {
-        // Trouver le participant à supprimer
-        const removedParticipant = currentParticipants.find(p => p.user.id === userId);
-        
-        // Mettre à jour la liste locale des participants
-        const updatedParticipants = currentParticipants.filter(p => p.user.id !== userId);
+        // Trouver le participant a supprimer
+        const removedParticipant = currentParticipants.find((p) => p.user.id === userId);
+
+        // Mettre a jour la liste locale des participants
+        const updatedParticipants = currentParticipants.filter((p) => p.user.id !== userId);
         setCurrentParticipants(updatedParticipants);
-        
+
         // Notifier le composant parent
         if (onParticipantUpdate) {
           onParticipantUpdate(updatedParticipants);
         }
-        
+
         // Remettre l'utilisateur dans la liste des disponibles s'il n'est pas supprimé
         if (removedParticipant && !removedParticipant.user.isDeleted) {
-          setAvailableUsers(prev => [...prev, removedParticipant.user]);
+          setAvailableUsers((prev) => [...prev, removedParticipant.user]);
         }
-        
-        alert("Participant retiré avec succès !");
+
+        await alert({
+          title: "Participant retiré",
+          description: "Le participant a été retiré du tournoi.",
+        });
       } else {
         const error = await response.json();
-        alert(`Erreur: ${error.message || "Impossible de supprimer le participant"}`);
+        await alert({
+          title: "Suppression impossible",
+          description: error.message || "Impossible de supprimer le participant.",
+        });
       }
-    } catch (error) {
-      console.error("Erreur lors de la suppression:", error);
-      alert("Erreur lors de la suppression du participant");
+    } catch {
+      await alert({
+        title: "Erreur",
+        description: "Erreur lors de la suppression du participant.",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -182,10 +214,15 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
       {/* Statistiques */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div className="text-sm text-gray-400">
-          Participants actuels: <span className="text-white font-medium">{activeParticipants.length}</span> / {maxPlayers}
+          Participants actuels:{" "}
+          <span className="text-white font-medium">{activeParticipants.length}</span> / {maxPlayers}
         </div>
-        <div className={`text-sm ${activeParticipants.length >= maxPlayers ? "text-red-400" : "text-gray-400"}`}>
-          {activeParticipants.length >= maxPlayers ? "Complet" : `${maxPlayers - activeParticipants.length} places restantes`}
+        <div
+          className={`text-sm ${activeParticipants.length >= maxPlayers ? "text-red-400" : "text-gray-400"}`}
+        >
+          {activeParticipants.length >= maxPlayers
+            ? "Complet"
+            : `${maxPlayers - activeParticipants.length} places restantes`}
         </div>
       </div>
 
@@ -200,9 +237,11 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
                 className="flex items-center justify-between p-4 rounded-xl bg-[#232426] border border-[#2a2c30] transition-all duration-300"
               >
                 <div className="flex items-center gap-3">
-                  <img
+                  <Image
                     src={participant.user.avatarUrl || "/images/default-avatar.svg"}
                     alt={participant.user.pseudo}
+                    width={32}
+                    height={32}
                     className="w-8 h-8 rounded-full object-cover"
                   />
                   <div>
@@ -210,7 +249,7 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
                     <div className="text-xs text-gray-400">{participant.user.email}</div>
                   </div>
                 </div>
-                
+
                 <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-3">
                   <div className="text-xs text-gray-400">
                     Inscrit le {new Date(participant.joinedAt).toLocaleDateString("fr-FR")}
@@ -218,7 +257,7 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
                   <button
                     onClick={() => removeParticipant(participant.user.id, participant.user.pseudo)}
                     disabled={isLoading}
-                    className="rounded-lg border border-red-600/40 text-red-300 hover:border-red-500 hover:text-red-200 px-3 py-1.5 text-xs disabled:opacity-50 transition-colors cursor-pointer"
+                    className="btn-danger rounded-lg border border-red-600/40 text-red-300 hover:border-red-500 hover:text-red-200 px-3 py-1.5 text-xs disabled:opacity-50 transition-colors cursor-pointer"
                   >
                     {isLoading ? "..." : "Enlever"}
                   </button>
@@ -237,7 +276,7 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
       {activeParticipants.length < maxPlayers && (
         <div>
           <h3 className="text-lg font-medium text-white mb-4">Ajouter des participants</h3>
-          
+
           <div className="space-y-4">
             {/* Recherche */}
             <div className="relative">
@@ -252,7 +291,7 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-3 text-gray-400 hover:text-gray-300 cursor-pointer"
+                  className="btn-plain absolute right-3 top-3 text-gray-400 hover:text-gray-300 cursor-pointer"
                 >
                   ✕
                 </button>
@@ -263,15 +302,15 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div className="text-sm text-gray-400">
-                  Utilisateurs disponibles: 
+                  Utilisateurs disponibles:
                   <span className="text-white font-medium ml-2">
-                    {isLoadingUsers ? "Chargement..." : `${filteredUsers.length} utilisateur${filteredUsers.length > 1 ? 's' : ''}`}
+                    {isLoadingUsers
+                      ? "Chargement..."
+                      : `${filteredUsers.length} utilisateur${filteredUsers.length > 1 ? "s" : ""}`}
                   </span>
                 </div>
                 {searchQuery && (
-                  <div className="text-xs text-blue-400">
-                    Filtré par "{searchQuery}"
-                  </div>
+                  <div className="text-xs text-blue-400">Filtré par {searchQuery}</div>
                 )}
               </div>
 
@@ -287,9 +326,11 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
                       className="flex items-center justify-between p-4 rounded-xl bg-[#232426] border border-[#2a2c30] hover:border-[#8F60D0]/30 transition-all duration-300"
                     >
                       <div className="flex items-center gap-3">
-                        <img
+                        <Image
                           src={user.avatarUrl || "/images/default-avatar.svg"}
                           alt={user.pseudo}
+                          width={32}
+                          height={32}
                           className="w-8 h-8 rounded-full object-cover"
                         />
                         <div>
@@ -297,7 +338,7 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
                           <div className="text-xs text-gray-400">{user.email}</div>
                         </div>
                       </div>
-                      
+
                       <button
                         onClick={() => addParticipant(user.id)}
                         disabled={isLoading}
@@ -310,10 +351,9 @@ export default function ParticipantManager({ tournamentId, participants, maxPlay
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-400 bg-[#232426] rounded-xl">
-                  {searchQuery 
-                    ? `Aucun utilisateur trouvé pour "${searchQuery}"`
-                    : "Tous les utilisateurs participent déjà à ce tournoi"
-                  }
+                  {searchQuery
+                    ? `Aucun utilisateur trouvé pour ${searchQuery}`
+                    : "Tous les utilisateurs participent déjà à ce tournoi"}
                 </div>
               )}
             </div>

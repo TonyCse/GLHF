@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useDialog } from "@/components/DialogProvider";
 
 interface Tournament {
   id: number;
@@ -9,7 +10,7 @@ interface Tournament {
   description?: string;
   game: string;
   maxPlayers: number;
-  date: Date;
+  date: string;
   isDeleted: boolean;
 }
 
@@ -27,8 +28,10 @@ const GAME_OPTIONS = [
   { value: "MINECRAFT", label: "Minecraft" },
 ];
 
+// Affiche le formulaire d'edition de tournoi
 export default function TournamentEditForm({ tournament, onTournamentUpdate }: Props) {
   const router = useRouter();
+  const { alert } = useDialog();
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -54,26 +57,34 @@ export default function TournamentEditForm({ tournament, onTournamentUpdate }: P
       });
 
       if (response.ok) {
-        const result = await response.json();
-        
+        await response.json();
+
         // Mise à jour dynamique si callback fourni
         if (onTournamentUpdate) {
           onTournamentUpdate({
             ...formData,
-            date: new Date(formData.date),
+            date: new Date(formData.date).toISOString(),
           });
         }
-        
+
         setIsEditing(false);
         router.refresh();
-        alert("Tournoi mis à jour avec succès !");
+        await alert({
+          title: "Tournoi mis à jour",
+          description: "Le tournoi a été mis à jour avec succès.",
+        });
       } else {
         const error = await response.json();
-        alert(`Erreur: ${error.message || "Impossible de mettre à jour le tournoi"}`);
+        await alert({
+          title: "Mise à jour impossible",
+          description: error.message || "Impossible de mettre à jour le tournoi.",
+        });
       }
-    } catch (error) {
-      console.error("Erreur lors de la mise à jour:", error);
-      alert("Erreur lors de la mise à jour du tournoi");
+    } catch {
+      await alert({
+        title: "Erreur",
+        description: "Erreur lors de la mise à jour du tournoi.",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -108,24 +119,21 @@ export default function TournamentEditForm({ tournament, onTournamentUpdate }: P
         <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
           {/* Nom */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Nom du tournoi
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Nom du tournoi</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="w-full rounded-lg bg-[#232426] border border-[#2a2c30] px-3 py-2 text-white outline-none focus:border-[#8F60D0] text-sm"
               required
+              maxLength={30}
               disabled={isLoading}
             />
           </div>
 
           {/* Jeu */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Jeu
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Jeu</label>
             <select
               value={formData.game}
               onChange={(e) => setFormData({ ...formData, game: e.target.value })}
@@ -148,7 +156,9 @@ export default function TournamentEditForm({ tournament, onTournamentUpdate }: P
             <input
               type="number"
               value={formData.maxPlayers}
-              onChange={(e) => setFormData({ ...formData, maxPlayers: parseInt(e.target.value) || 0 })}
+              onChange={(e) =>
+                setFormData({ ...formData, maxPlayers: parseInt(e.target.value) || 0 })
+              }
               className="w-full rounded-lg bg-[#232426] border border-[#2a2c30] px-3 py-2 text-white outline-none focus:border-[#8F60D0] text-sm"
               min="2"
               max="64"
@@ -159,9 +169,7 @@ export default function TournamentEditForm({ tournament, onTournamentUpdate }: P
 
           {/* Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Date et heure
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Date et heure</label>
             <input
               type="datetime-local"
               value={formData.date}
@@ -174,9 +182,7 @@ export default function TournamentEditForm({ tournament, onTournamentUpdate }: P
 
           {/* Description */}
           <div className="sm:col-span-1 md:col-span-2">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Description
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -208,7 +214,3 @@ export default function TournamentEditForm({ tournament, onTournamentUpdate }: P
     </div>
   );
 }
-
-
-
-

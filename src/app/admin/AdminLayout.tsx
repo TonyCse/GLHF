@@ -1,26 +1,25 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 
+// Affiche le layout admin
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [openPathname, setOpenPathname] = useState<string | null>(null);
   const pathname = usePathname();
-
-  // Fermer le sidebar quand on navigue sur mobile
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [pathname]);
+  const sidebarOpen = openPathname === pathname;
 
   const toggleSidebar = () => {
-    setSidebarOpen(!sidebarOpen);
+    setOpenPathname((current) => (current === pathname ? null : pathname));
   };
 
   const navItems = [
     { href: "/admin", label: "Dashboard", icon: "📊" },
     { href: "/admin/users", label: "Utilisateurs", icon: "👥" },
     { href: "/admin/tournois", label: "Tournois", icon: "🏆" },
+    { href: "/admin/signalements", label: "Signalements", icon: "🚩" },
+    { href: "/admin/messages", label: "Messages", icon: "✉️" },
     { href: "/admin/paiements", label: "Paiements", icon: "💳" },
     { href: "/", label: "Accueil", icon: "🏠" },
   ];
@@ -37,7 +36,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
+          onClick={() => setOpenPathname(null)}
         />
       )}
 
@@ -52,15 +51,20 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
         `}
       >
         <div className="flex items-center justify-between mb-6">
-          <div className="text-2xl font-extrabold text-[#8F60D0]">GLHF • Admin</div>
+          <div className="text-2xl font-extrabold text-white">GLHF • Admin</div>
           {/* Bouton fermer pour mobile */}
           <button
-            onClick={() => setSidebarOpen(false)}
-            className="lg:hidden text-gray-400 hover:text-white transition-colors"
+            onClick={() => setOpenPathname(null)}
+            className="lg:hidden text-white hover:text-white transition-colors"
             aria-label="Fermer le menu"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -72,13 +76,14 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
               href={item.href}
               className={`
                 flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors
-                ${isActive(item.href)
-                  ? "bg-[#8F60D0] text-white font-medium"
-                  : "hover:bg-[#232426] text-gray-300 hover:text-white"
+                ${
+                  isActive(item.href)
+                    ? "bg-[#8F60D0] text-white font-medium"
+                    : "hover:bg-[#232426] text-white hover:text-white"
                 }
               `}
             >
-              <span className="text-base">{item.icon}</span>
+              <span className="text-base" aria-hidden="true">{item.icon}</span>
               {item.label}
             </Link>
           ))}
@@ -86,7 +91,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
 
         {/* Indicateur de statut en bas */}
         <div className="bottom-5 left-5 right-5">
-          <div className="text-xs text-gray-500 border-t border-[#2a2c30] pt-4">
+          <div className="text-xs text-white border-t border-[#2a2c30] pt-4">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
               Connecté en tant qu&apos;admin
@@ -102,26 +107,26 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
           <div className="flex items-center justify-between">
             <button
               onClick={toggleSidebar}
-              className="text-gray-400 hover:text-white transition-colors"
+              className="text-white hover:text-white transition-colors"
               aria-label="Ouvrir le menu"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
               </svg>
             </button>
             <div className="text-lg font-bold text-[#8F60D0]">GLHF Admin</div>
-            <div className="w-6"></div> {/* Spacer pour centrer le titre */}
+            <div className="w-6"></div> {/* Espace pour centrer le titre */}
           </div>
         </div>
 
         {/* Contenu des pages */}
-        <div className="p-4 lg:p-5">
-          {children}
-        </div>
+        <div className="p-4 lg:p-5">{children}</div>
       </main>
     </div>
   );
 }
-
-
-

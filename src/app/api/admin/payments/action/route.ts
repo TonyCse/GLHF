@@ -1,23 +1,46 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+import { logger } from "@/lib/logger";
 
 export async function POST(req: Request) {
   const session = await auth();
   if (!session || session.user?.role !== "SUPER_ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Accès interdit" }, { status: 403 });
   }
 
   try {
-    const body = await req.json();
-    const { userId, action, planId } = body as { userId?: number; action?: string; planId?: number };
-    if (!userId || !action) {
-      return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
+    let payload: unknown = null;
+    try {
+      payload = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Payload invalide" }, { status: 400 });
     }
 
+    const schema = z.discriminatedUnion("action", [
+      z.object({
+        action: z.literal("cancel"),
+        userId: z.coerce.number().int().positive(),
+      }),
+      z.object({
+        action: z.literal("change_plan"),
+        userId: z.coerce.number().int().positive(),
+        planId: z.coerce.number().int().positive(),
+      }),
+    ]);
+
+    const parsed = schema.safeParse(payload);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Paramètres manquants" }, { status: 400 });
+    }
+
+    const { userId, action } = parsed.data;
+    const planId = "planId" in parsed.data ? parsed.data.planId : undefined;
+
     if (action === "cancel") {
-      const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
-      if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+      const user = await prisma.user.findFirst({ where: { id: Number(userId), isDeleted: false } });
+      if (!user) return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
 
       await prisma.user.update({
         where: { id: Number(userId) },
@@ -34,16 +57,16 @@ export async function POST(req: Request) {
 
     if (action === "change_plan") {
       if (!planId) {
-        return NextResponse.json({ error: "Missing planId" }, { status: 400 });
+        return NextResponse.json({ error: "ID du plan manquant" }, { status: 400 });
       }
 
       const plan = await prisma.plan.findUnique({ where: { id: Number(planId) } });
       if (!plan) {
-        return NextResponse.json({ error: "Plan not found" }, { status: 404 });
+        return NextResponse.json({ error: "Plan introuvable" }, { status: 404 });
       }
 
-      const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
-      if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+      const user = await prisma.user.findFirst({ where: { id: Number(userId), isDeleted: false } });
+      if (!user) return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
 
       await prisma.user.update({
         where: { id: Number(userId) },
@@ -67,9 +90,9 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({ error: "Unknown action" }, { status: 400 });
-  } catch (err: any) {
-    console.error("/api/admin/payments/action error:", err);
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Action inconnue" }, { status: 400 });
+  } catch (err: unknown) {
+    logger.error("admin_payments_action_erreur", { message: err instanceof Error ? err.message : String(err) });
+    return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }

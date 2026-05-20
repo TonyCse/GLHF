@@ -12,6 +12,7 @@ const GAME_LABELS: Record<string, string> = {
   MINECRAFT: "Minecraft",
 };
 
+// Filtre des tournois.
 export default function FilterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -20,21 +21,23 @@ export default function FilterForm() {
   const currentGame = searchParams.get("game") ?? "all";
   const currentQ = searchParams.get("q") ?? "";
 
-  const updateFilters = useCallback((updates: Record<string, string>) => {
-    const params = new URLSearchParams();
-    
-    // Obtenir les valeurs actuelles
-    const status = updates.status ?? currentStatus;
-    const game = updates.game ?? currentGame;
-    const q = updates.q ?? currentQ;
-    
-    if (status !== "all") params.set("status", status);
-    if (game !== "all") params.set("game", game);
-    if (q.trim()) params.set("q", q.trim());
-    
-    const query = params.toString();
-    router.push(`/admin/tournois${query ? `?${query}` : ""}`);
-  }, [router, currentStatus, currentGame, currentQ]);
+  const updateFilters = useCallback(
+    (updates: Record<string, string>) => {
+      const params = new URLSearchParams();
+
+      const status = updates.status ?? currentStatus;
+      const game = updates.game ?? currentGame;
+      const q = updates.q ?? currentQ;
+
+      if (status !== "all") params.set("status", status);
+      if (game !== "all") params.set("game", game);
+      if (q.trim()) params.set("q", q.trim());
+
+      const query = params.toString();
+      router.push(`/admin/tournois${query ? `?${query}` : ""}`);
+    },
+    [router, currentStatus, currentGame, currentQ],
+  );
 
   return (
     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">

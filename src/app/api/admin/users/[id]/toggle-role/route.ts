@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Role } from "@prisma/client";
+import { z } from "zod";
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// Function qui permet de basculer le role d'un utilisateur.
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
-    // non-admin → 403 + retour à la liste
+    // Non admin -> 403 + retour a la liste
     const back = new URL("/admin/users?err=forbidden", req.url);
     return NextResponse.redirect(back);
   }
@@ -17,13 +17,15 @@ export async function POST(
   const resolvedParams = await Promise.resolve(params as unknown as { id?: string });
   const idFromParams = resolvedParams?.id;
   const idFromPath = new URL(req.url).pathname.split("/").filter(Boolean).slice(-2, -1)[0];
-  const id = Number(idFromParams ?? idFromPath);
-  if (!Number.isFinite(id)) {
+  const idSchema = z.coerce.number().int().positive();
+  const parsedId = idSchema.safeParse(idFromParams ?? idFromPath);
+  if (!parsedId.success) {
     const back = new URL("/admin/users?err=bad_id", req.url);
     return NextResponse.redirect(back);
   }
+  const id = parsedId.data;
 
-  // (optionnel) éviter qu’un admin se rétrograde lui-même par erreur
+  // (optionnel) eviter qu'un admin se retrograde lui-meme par erreur
   if (String(session.user.id) === String(id)) {
     const back = new URL("/admin/users?err=self_demote_blocked", req.url);
     return NextResponse.redirect(back);
@@ -40,19 +42,37 @@ export async function POST(
   }
 
   if (user.role === "SUPER_ADMIN" && !isSuperAdmin) {
-    const back = new URL("/admin/users?err=forbidden", req.url);
+    const back = new URL("/admin/users?err=admin_role_restricted", req.url);
     return NextResponse.redirect(back);
   }
 
-  const nextRole = user.role === "ADMIN" ? "USER" : "ADMIN";
+  let nextRole: Role;
+  if (user.role === "SUPER_ADMIN") {
+    nextRole = "ADMIN";
+  } else if (user.role === "ADMIN") {
+    nextRole = isSuperAdmin ? "SUPER_ADMIN" : "USER";
+  } else {
+    // Seul un SUPER_ADMIN peut promouvoir un USER en ADMIN
+    if (!isSuperAdmin) {
+      const back = new URL("/admin/users?err=admin_role_restricted", req.url);
+      return NextResponse.redirect(back);
+    }
+    nextRole = "ADMIN";
+  }
 
   await prisma.user.update({
     where: { id },
     data: { role: nextRole },
   });
 
-  // Redirige vers la page précédente (référent) ou /admin/users
+  // Redirige vers la page precedente (referent) ou /admin/users
   const referer = req.headers.get("referer");
-  if (referer) return NextResponse.redirect(referer);
+  const appOrigin = new URL(req.url).origin;
+  if (referer) {
+    try {
+      const refUrl = new URL(referer);
+      if (refUrl.origin === appOrigin) return NextResponse.redirect(referer);
+    } catch { /* URL invalide, on ignore */ }
+  }
   return NextResponse.redirect(new URL("/admin/users?ok=role_updated", req.url));
 }

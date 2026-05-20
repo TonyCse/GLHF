@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Role } from "@prisma/client";
+import Image from "next/image";
 import UserEditForm from "./UserEditForm";
 
 interface User {
@@ -39,20 +40,20 @@ interface Props {
   gameLabels: Record<string, string>;
 }
 
-export default function UserDetailClient({ 
-  user: initialUser, 
-  statusColor, 
-  statusLabel, 
+// Details de l'user cote admin.
+export default function UserDetailClient({
+  user: initialUser,
+  statusColor,
+  statusLabel,
   roleColor,
-  viewerRole
+  viewerRole,
 }: Props) {
   const [user, setUser] = useState(initialUser);
 
   const handleUserUpdate = (updatedData: Partial<User>) => {
-    setUser(prev => ({
+    setUser((prev) => ({
       ...prev,
       ...updatedData,
-      // Mettre à jour les stats affichées
       tournamentsWon: updatedData.tournamentsWon ?? prev.tournamentsWon,
       matchesWon: updatedData.matchesWon ?? prev.matchesWon,
       ranking: updatedData.ranking ?? prev.ranking,
@@ -70,27 +71,33 @@ export default function UserDetailClient({
       {/* Informations de l'utilisateur */}
       <div className="rounded-2xl bg-[#1c1d1f] border border-[#2a2c30] p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 mb-6">
-          <div className="flex-shrink-0">
-            <img
+          <div className="shrink-0">
+            <Image
               src={user.avatarUrl || "/images/default-avatar.svg"}
               alt={user.pseudo}
+              width={96}
+              height={96}
               className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-2 border-[#2a2c30]"
             />
           </div>
-          
+
           <div className="flex-1 text-center sm:text-left min-w-0">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-3">
               <h1 className="text-2xl sm:text-3xl font-bold text-white truncate">{user.pseudo}</h1>
               <div className="flex flex-wrap justify-center sm:justify-start gap-2">
-                <span className={`inline-flex items-center px-3 py-1 text-xs font-medium rounded-full bg-gray-800 ${statusColor}`}>
+                <span
+                  className={`inline-flex items-center px-3 py-1 text-xs font-medium rounded-full bg-gray-800 ${statusColor}`}
+                >
                   ● {statusLabel}
                 </span>
-                <span className={`inline-flex items-center px-3 py-1 text-xs font-medium rounded-full bg-gray-800 ${roleColor}`}>
+                <span
+                  className={`inline-flex items-center px-3 py-1 text-xs font-medium rounded-full bg-gray-800 ${roleColor}`}
+                >
                   {user.role}
                 </span>
               </div>
             </div>
-            
+
             <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 text-sm">
               <div className="space-y-2">
                 <div className="flex flex-col gap-1">
@@ -111,15 +118,15 @@ export default function UserDetailClient({
                   </div>
                 </div>
               </div>
-              
+
               <div className="space-y-2">
                 <div className="flex flex-col gap-1">
                   <span className="font-medium text-gray-400">Membre depuis:</span>
                   <span className="text-gray-300">
                     {new Date(user.createdAt).toLocaleDateString("fr-FR", {
                       year: "numeric",
-                      month: "long", 
-                      day: "numeric"
+                      month: "long",
+                      day: "numeric",
                     })}
                   </span>
                 </div>
@@ -127,9 +134,12 @@ export default function UserDetailClient({
                   <span className="font-medium text-gray-400">Taux de victoire:</span>
                   <div className="flex items-center gap-2">
                     <span className="text-green-400 font-bold">
-                      {user._count.tournamentParticipations > 0 
-                        ? Math.round((user.tournamentsWon / user._count.tournamentParticipations) * 100)
-                        : 0}%
+                      {user._count.tournamentParticipations > 0
+                        ? Math.round(
+                            (user.tournamentsWon / user._count.tournamentParticipations) * 100,
+                          )
+                        : 0}
+                      %
                     </span>
                     <span className="text-xs text-gray-500">
                       ({user.tournamentsWon}/{user._count.tournamentParticipations})
@@ -137,16 +147,26 @@ export default function UserDetailClient({
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="font-medium text-gray-400">Niveau d'activité:</span>
+                  <span className="font-medium text-gray-400">Niveau d&apos;activité:</span>
                   <div className="flex items-center gap-2">
-                    <span className={`text-sm font-medium ${
-                      user._count.tournamentParticipations >= 10 ? 'text-green-400' :
-                      user._count.tournamentParticipations >= 5 ? 'text-yellow-400' :
-                      user._count.tournamentParticipations >= 1 ? 'text-orange-400' : 'text-gray-400'
-                    }`}>
-                      {user._count.tournamentParticipations >= 10 ? '🔥 Très actif' :
-                       user._count.tournamentParticipations >= 5 ? '⭐ Actif' :
-                       user._count.tournamentParticipations >= 1 ? '📈 Débutant' : '😴 Inactif'}
+                    <span
+                      className={`text-sm font-medium ${
+                        user._count.tournamentParticipations >= 10
+                          ? "text-green-400"
+                          : user._count.tournamentParticipations >= 5
+                            ? "text-yellow-400"
+                            : user._count.tournamentParticipations >= 1
+                              ? "text-orange-400"
+                              : "text-gray-400"
+                      }`}
+                    >
+                      {user._count.tournamentParticipations >= 10
+                        ? "🔥 Très actif"
+                        : user._count.tournamentParticipations >= 5
+                          ? "⭐ Actif"
+                          : user._count.tournamentParticipations >= 1
+                            ? "📈 Débutant"
+                            : "😴 Inactif"}
                     </span>
                   </div>
                 </div>
@@ -158,28 +178,42 @@ export default function UserDetailClient({
         {/* Statistiques */}
         <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl p-3 sm:p-4 bg-[#232426] text-center">
-            <div className="text-xs uppercase tracking-wider text-gray-400 mb-1">Tournois créés</div>
-            <div className="text-xl sm:text-2xl font-bold text-white">{user._count.createdTournaments}</div>
+            <div className="text-xs uppercase tracking-wider text-gray-400 mb-1">
+              Tournois créés
+            </div>
+            <div className="text-xl sm:text-2xl font-bold text-white">
+              {user._count.createdTournaments}
+            </div>
           </div>
-          
+
           <div className="rounded-xl p-3 sm:p-4 bg-[#232426] text-center">
-            <div className="text-xs uppercase tracking-wider text-gray-400 mb-1">Participations</div>
-            <div className="text-xl sm:text-2xl font-bold text-white">{user._count.tournamentParticipations}</div>
+            <div className="text-xs uppercase tracking-wider text-gray-400 mb-1">
+              Participations
+            </div>
+            <div className="text-xl sm:text-2xl font-bold text-white">
+              {user._count.tournamentParticipations}
+            </div>
           </div>
-          
+
           <div className="rounded-xl p-3 sm:p-4 bg-[#232426] text-center">
-            <div className="text-xs uppercase tracking-wider text-gray-400 mb-1">Victoires tournois</div>
-            <div className="text-xl sm:text-2xl font-bold text-yellow-400">{user.tournamentsWon}</div>
+            <div className="text-xs uppercase tracking-wider text-gray-400 mb-1">
+              Victoires tournois
+            </div>
+            <div className="text-xl sm:text-2xl font-bold text-yellow-400">
+              {user.tournamentsWon}
+            </div>
           </div>
-          
+
           <div className="rounded-xl p-3 sm:p-4 bg-[#232426] text-center">
-            <div className="text-xs uppercase tracking-wider text-gray-400 mb-1">Matches gagnés</div>
+            <div className="text-xs uppercase tracking-wider text-gray-400 mb-1">
+              Matches gagnés
+            </div>
             <div className="text-xl sm:text-2xl font-bold text-green-400">{user.matchesWon}</div>
           </div>
         </div>
       </div>
 
-      {/* Formulaire d'édition */}
+      {/* Formulaire d&apos;edition */}
       <div className="rounded-2xl bg-[#1c1d1f] border border-[#2a2c30] p-4 sm:p-6">
         <h2 className="text-xl sm:text-2xl font-bold text-white mb-6 flex items-center gap-2">
           ⚙️ Modifier l&apos;utilisateur

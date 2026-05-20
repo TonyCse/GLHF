@@ -1,9 +1,16 @@
-import { auth } from "@/lib/auth";
+﻿import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import FilterForm from "./FilterForm";
 import DeleteTournamentCard from "./DeleteTournamentCard";
+import type { Prisma } from "@prisma/client";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Gestion des tournois – Admin GLHF",
+  description: "Administration des tournois GLHF.",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +19,7 @@ const PAGE_SIZE = 10;
 type SearchParams = {
   q?: string;
   p?: string;
-  status?: string; // "all" | "active" | "finished" | "deleted"
+  status?: string; // Filtre de statut : all | active | finished | deleted
   game?: string;
   ok?: string;
   err?: string;
@@ -27,6 +34,15 @@ const GAME_LABELS: Record<string, string> = {
   MINECRAFT: "Minecraft",
 };
 
+type TournamentListItem = Prisma.TournamentGetPayload<{
+  include: {
+    createdBy: { select: { pseudo: true } };
+    winner: { select: { pseudo: true; isDeleted: true } };
+    participants: { where: { isActive: true }; select: { id: true } };
+  };
+}>;
+
+// Helper pour construire proprement une query string
 function buildQS(params: Record<string, string | undefined>) {
   const usp = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
@@ -35,6 +51,7 @@ function buildQS(params: Record<string, string | undefined>) {
   return usp.toString();
 }
 
+// Affiche la liste des tournois
 export default async function AdminTournaments({
   searchParams,
 }: {
@@ -54,7 +71,7 @@ export default async function AdminTournaments({
 
   // Construction de la clause where
   let baseWhere: Record<string, unknown> = {};
-  
+
   // Filtrage par statut
   if (statusFilter === "active") {
     baseWhere = { isDeleted: false, winnerId: null };
@@ -75,48 +92,46 @@ export default async function AdminTournaments({
   const where = q
     ? {
         ...baseWhere,
-        OR: [
-          { name: { contains: q } },
-          { description: { contains: q } },
-        ],
+        OR: [{ name: { contains: q } }, { description: { contains: q } }],
       }
     : baseWhere;
 
+  const tournamentsPromise: Promise<TournamentListItem[]> = prisma.tournament.findMany({
+    where,
+    orderBy: { id: "asc" }, 
+    take: PAGE_SIZE,
+    skip: (page - 1) * PAGE_SIZE,
+    include: {
+      createdBy: {
+        select: { pseudo: true },
+      },
+      winner: {
+        select: { pseudo: true, isDeleted: true },
+      },
+      participants: {
+        where: { isActive: true },
+        select: { id: true },
+      },
+    },
+  });
+
   const [total, tournaments] = await Promise.all([
     prisma.tournament.count({ where }),
-    prisma.tournament.findMany({
-      where,
-      orderBy: { id: "asc" }, // Commencer par ID 1, 2, 3...
-      take: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
-      include: {
-        createdBy: {
-          select: { pseudo: true },
-        },
-        winner: {
-          select: { pseudo: true },
-        },
-        participants: {
-          where: { isActive: true },
-          select: { id: true },
-        },
-
-      },
-    }),
+    tournamentsPromise,
   ]);
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-6">
-      {/* Messages d'état */}
+      {/* Messages d'etat */}
       {!!params?.ok && (
         <div className="rounded-lg border border-green-500/30 bg-green-500/10 text-green-200 px-3 py-2 text-sm">
           {params.ok === "tournament_deleted"
             ? "Tournoi supprimé avec succès."
             : params.ok === "tournament_restored"
-            ? "Tournoi restauré avec succès."
-            : params.ok}
+              ? "Tournoi restauré avec succès."
+              : params.ok}
         </div>
       )}
       {!!params?.err && (
@@ -134,11 +149,11 @@ export default async function AdminTournaments({
         </div>
       </div>
 
-      {/* Desktop Table */}
+      {/* Tableau desktop */}
       <div className="admin-scroll hidden md:block overflow-x-auto rounded-2xl border border-[#2a2c30]">
         <table className="min-w-full text-sm">
           <thead className="bg-[#1c1d1f]">
-            <tr className="text-left text-gray-300">
+            <tr className="text-left text-white">
               <th className="p-3">ID</th>
               <th className="p-3">Nom</th>
               <th className="p-3">Jeu</th>
@@ -160,39 +175,37 @@ export default async function AdminTournaments({
               return (
                 <tr
                   key={tournament.id}
-                  className={`border-t border-[#2a2c30] ${
-                    isDeleted ? "opacity-60" : ""
-                  }`}
+                  className={`border-t border-[#2a2c30] ${isDeleted ? "opacity-60" : ""}`}
                 >
-                  <td className="p-3 text-gray-400">{tournament.id}</td>
+                  <td className="p-3 text-white">{tournament.id}</td>
                   <td className="p-3">
                     <div className={isDeleted ? "line-through" : ""}>
                       <div className="font-medium text-white">{tournament.name}</div>
-                      <div className="text-xs text-gray-400 truncate max-w-40">
+                      <div className="text-xs text-white truncate max-w-40">
                         {tournament.description}
                       </div>
                     </div>
                   </td>
                   <td className="p-3">
-                    <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-[#232426] text-gray-300">
+                    <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-[#232426] text-white">
                       {GAME_LABELS[tournament.game] || tournament.game}
                     </span>
                   </td>
-                  <td className="p-3 text-gray-300">{tournament.createdBy?.pseudo || "Inconnu"}</td>
+                  <td className="p-3 text-white">{tournament.createdBy?.pseudo || "Inconnu"}</td>
                   <td className="p-3">
                     <span className="text-white font-medium">
                       {participantsCount}/{tournament.maxPlayers}
                     </span>
                   </td>
-                  <td className="p-3 text-gray-400">{formattedDate}</td>
+                  <td className="p-3 text-white">{formattedDate}</td>
                   <td className="p-3">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
                         isDeleted
-                          ? "bg-[#2a2c30] text-gray-400"
+                          ? "bg-[#2a2c30] text-white"
                           : isFinished
-                          ? "bg-green-900/30 text-green-300"
-                          : "bg-blue-900/30 text-blue-300"
+                            ? "bg-green-900/30 text-green-300"
+                            : "bg-blue-900/30 text-blue-300"
                       }`}
                     >
                       {isDeleted ? "Supprimé" : isFinished ? "Terminé" : "Actif"}
@@ -204,7 +217,7 @@ export default async function AdminTournaments({
                         {tournament.winner.pseudo}
                       </span>
                     ) : (
-                      <span className="text-gray-500">-</span>
+                      <span className="text-white">-</span>
                     )}
                   </td>
                   <td className="p-3 text-right space-x-2">
@@ -223,23 +236,19 @@ export default async function AdminTournaments({
                       Voir
                     </Link>
 
-                    {/* Toggle delete / restore */}
+                    {/* Basculer supprimer / restaurer */}
                     <form
                       method="POST"
                       action={`/api/admin/tournaments/${tournament.id}/toggle-delete`}
                       className="inline"
                     >
                       <button
-                        className={`rounded-lg px-3 py-1.5 text-xs border ${
+                        className={`${isDeleted ? "btn-plain" : "btn-danger"} rounded-lg px-3 py-1.5 text-xs border ${
                           isDeleted
                             ? "border-green-600/40 text-green-300 hover:border-green-500 hover:text-green-200"
                             : "border-red-600/40 text-red-300 hover:border-red-500 hover:text-red-200"
                         }`}
-                        title={
-                          isDeleted
-                            ? "Restaurer le tournoi"
-                            : "Supprimer le tournoi"
-                        }
+                        title={isDeleted ? "Restaurer le tournoi" : "Supprimer le tournoi"}
                       >
                         {isDeleted ? "Restaurer" : "Supprimer"}
                       </button>
@@ -250,7 +259,7 @@ export default async function AdminTournaments({
             })}
             {tournaments.length === 0 && (
               <tr>
-                <td colSpan={9} className="p-6 text-center text-gray-400">
+                <td colSpan={9} className="p-6 text-center text-white">
                   Aucun tournoi trouvé.
                 </td>
               </tr>
@@ -259,7 +268,7 @@ export default async function AdminTournaments({
         </table>
       </div>
 
-      {/* Mobile Cards */}
+      {/* Cartes mobile */}
       <div className="md:hidden space-y-4">
         {tournaments.map((tournament) => {
           const isDeleted = tournament.isDeleted;
@@ -277,7 +286,9 @@ export default async function AdminTournaments({
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-lg font-medium text-white ${isDeleted ? "line-through" : ""}`}>
+                    <span
+                      className={`text-lg font-medium text-white ${isDeleted ? "line-through" : ""}`}
+                    >
                       {tournament.name}
                     </span>
                     <span
@@ -285,18 +296,18 @@ export default async function AdminTournaments({
                         isFinished
                           ? "bg-green-800 text-green-200"
                           : isDeleted
-                          ? "bg-red-800 text-red-200"
-                          : "bg-blue-800 text-blue-200"
+                            ? "bg-red-800 text-red-200"
+                            : "bg-blue-800 text-blue-200"
                       }`}
                     >
                       {isFinished ? "Terminé" : isDeleted ? "Supprimé" : "En cours"}
                     </span>
                   </div>
-                  
-                  <div className="text-sm text-gray-400 mb-1">ID: {tournament.id}</div>
-                  
-                  <div className="flex items-center gap-3 text-xs text-gray-400 mb-2">
-                    <span className="inline-flex items-center rounded-full px-2 py-1 bg-[#232426] text-gray-300">
+
+                  <div className="text-sm text-white mb-1">ID: {tournament.id}</div>
+
+                  <div className="flex items-center gap-3 text-xs text-white mb-2">
+                    <span className="inline-flex items-center rounded-full px-2 py-1 bg-[#232426] text-white">
                       {GAME_LABELS[tournament.game] || tournament.game}
                     </span>
                     <span>Par: {tournament.createdBy?.pseudo || "Inconnu"}</span>
@@ -304,28 +315,29 @@ export default async function AdminTournaments({
 
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div>
-                      <span className="text-gray-400">Participants:</span>
+                      <span className="text-white">Participants:</span>
                       <span className="text-white font-medium ml-1">
                         {participantsCount}/{tournament.maxPlayers}
                       </span>
                     </div>
                     <div>
-                      <span className="text-gray-400">Date:</span>
+                      <span className="text-white">Date:</span>
                       <span className="text-white ml-1">{formattedDate}</span>
                     </div>
                     <div className="col-span-2">
-                      <span className="text-gray-400">Gagnant:</span>
+                      <span className="text-white">Gagnant:</span>
                       <span className="text-white ml-1">
-                        {tournament.winner 
-                          ? (tournament.winner.isDeleted ? "[Utilisateur supprimé]" : tournament.winner.pseudo)
-                          : "En cours"
-                        }
+                        {tournament.winner
+                          ? tournament.winner.isDeleted
+                            ? "[Utilisateur supprimé]"
+                            : tournament.winner.pseudo
+                          : "En cours"}
                       </span>
                     </div>
                   </div>
 
                   {tournament.description && (
-                    <div className="text-xs text-gray-400 mt-2 truncate">
+                    <div className="text-xs text-white mt-2 truncate">
                       {tournament.description}
                     </div>
                   )}
@@ -347,15 +359,13 @@ export default async function AdminTournaments({
                   Voir
                 </Link>
 
-                {!isDeleted && (
-                  <DeleteTournamentCard tournamentId={tournament.id} />
-                )}
+                {!isDeleted && <DeleteTournamentCard tournamentId={tournament.id} />}
               </div>
             </div>
           );
         })}
         {tournaments.length === 0 && (
-          <div className="rounded-2xl bg-[#1c1d1f] border border-[#2a2c30] p-6 text-center text-gray-400">
+          <div className="rounded-2xl bg-[#1c1d1f] border border-[#2a2c30] p-6 text-center text-white">
             Aucun tournoi trouvé.
           </div>
         )}
@@ -378,7 +388,7 @@ export default async function AdminTournaments({
               className={`rounded-lg px-3 py-2 border transition-colors ${
                 isActive
                   ? "border-[#8F60D0] text-[#8F60D0] bg-[#8F60D0]/10"
-                  : "border-[#2a2c30] text-gray-400 hover:border-[#8F60D0] hover:text-[#8F60D0]"
+                  : "border-[#2a2c30] text-white hover:border-[#8F60D0] hover:text-[#8F60D0]"
               }`}
             >
               {n}

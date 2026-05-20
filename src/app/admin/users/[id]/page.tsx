@@ -8,6 +8,7 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
+// Affiche les details d'un user
 export default async function AdminUserDetail({ params }: Props) {
   const session = await auth();
   const { id } = await params;
@@ -36,13 +37,13 @@ export default async function AdminUserDetail({ params }: Props) {
           _count: {
             select: {
               participants: {
-                where: { isActive: true }
-              }
-            }
-          }
+                where: { isActive: true },
+              },
+            },
+          },
         },
         orderBy: { date: "desc" },
-        take: 5
+        take: 5,
       },
       tournamentParticipations: {
         where: { isActive: true },
@@ -53,34 +54,34 @@ export default async function AdminUserDetail({ params }: Props) {
               name: true,
               game: true,
               date: true,
-              isDeleted: true
-            }
-          }
+              isDeleted: true,
+            },
+          },
         },
         orderBy: { joinedAt: "desc" },
-        take: 5
+        take: 5,
       },
       tournamentsVictory: {
         select: {
           id: true,
           name: true,
           game: true,
-          date: true
+          date: true,
         },
         orderBy: { date: "desc" },
-        take: 5
+        take: 5,
       },
       _count: {
         select: {
           createdTournaments: true,
           tournamentParticipations: {
-            where: { isActive: true }
+            where: { isActive: true },
           },
           tournamentsVictory: true,
-          matchesWonList: true
-        }
-      }
-    }
+          matchesWonList: true,
+        },
+      },
+    },
   });
 
   if (!user) {
@@ -89,7 +90,7 @@ export default async function AdminUserDetail({ params }: Props) {
 
   const gameLabels = {
     LEAGUE_OF_LEGENDS: "League of Legends",
-    VALORANT: "Valorant", 
+    VALORANT: "Valorant",
     OVERWATCH: "Overwatch",
     FALL_GUYS: "Fall Guys",
     MARVELS_RIVALS: "Marvel's Rivals",
@@ -102,22 +103,23 @@ export default async function AdminUserDetail({ params }: Props) {
     user.role === "SUPER_ADMIN"
       ? "text-amber-400"
       : user.role === "ADMIN"
-      ? "text-purple-400"
-      : "text-blue-400";
+        ? "text-purple-400"
+        : "text-blue-400";
 
   return (
     <div className="space-y-6">
-      {/* Header avec navigation */}
-      <div className="flex items-center gap-4">
-        <Link 
-          href="/admin/users"
-          className="text-[#8F60D0] hover:text-[#A855F7] flex items-center gap-2"
-        >
-          ← Retour aux utilisateurs
-        </Link>
-      </div>
+      {/* Fil d'Ariane */}
+      <nav aria-label="Fil d'Ariane" className="text-sm text-gray-400">
+        <ol className="flex items-center gap-2">
+          <li><Link href="/admin" className="hover:text-[#8F60D0] transition-colors">Admin</Link></li>
+          <li aria-hidden="true">/</li>
+          <li><Link href="/admin/users" className="hover:text-[#8F60D0] transition-colors">Utilisateurs</Link></li>
+          <li aria-hidden="true">/</li>
+          <li aria-current="page" className="text-white">{user.pseudo}</li>
+        </ol>
+      </nav>
 
-      <UserDetailClient 
+      <UserDetailClient
         user={user}
         statusColor={statusColor}
         statusLabel={statusLabel}
@@ -126,9 +128,9 @@ export default async function AdminUserDetail({ params }: Props) {
         gameLabels={gameLabels}
       />
 
-      {/* Activité récente */}
+      {/* Activite recente */}
       <div className="grid gap-6 sm:grid-cols-1 lg:grid-cols-2">
-        {/* Tournois créés */}
+        {/* Tournois crees */}
         <div className="rounded-2xl bg-[#1c1d1f] border border-[#2a2c30] p-4 sm:p-6">
           <h3 className="text-lg font-medium text-white mb-4">Tournois créés récents</h3>
           {user.createdTournaments.length > 0 ? (
@@ -136,15 +138,18 @@ export default async function AdminUserDetail({ params }: Props) {
               {user.createdTournaments.map((tournament) => (
                 <div
                   key={tournament.id}
-                  className={`p-3 rounded-lg bg-[#232426] border border-[#2a2c30] ${tournament.isDeleted ? 'opacity-60' : ''}`}
+                  className={`p-3 rounded-lg bg-[#232426] border border-[#2a2c30] ${tournament.isDeleted ? "opacity-60" : ""}`}
                 >
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                     <div className="flex-1">
-                      <div className={`font-medium text-white ${tournament.isDeleted ? 'line-through' : ''}`}>
+                      <div
+                        className={`font-medium text-white ${tournament.isDeleted ? "line-through" : ""}`}
+                      >
                         {tournament.name}
                       </div>
                       <div className="text-xs text-gray-400">
-                        {gameLabels[tournament.game as keyof typeof gameLabels]} • {tournament._count.participants} participants
+                        {gameLabels[tournament.game as keyof typeof gameLabels]} •{" "}
+                        {tournament._count.participants} participants
                       </div>
                     </div>
                     <Link
@@ -170,11 +175,13 @@ export default async function AdminUserDetail({ params }: Props) {
               {user.tournamentParticipations.map((participation) => (
                 <div
                   key={participation.id}
-                  className={`p-3 rounded-lg bg-[#232426] border border-[#2a2c30] ${participation.tournament.isDeleted ? 'opacity-60' : ''}`}
+                  className={`p-3 rounded-lg bg-[#232426] border border-[#2a2c30] ${participation.tournament.isDeleted ? "opacity-60" : ""}`}
                 >
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                     <div className="flex-1">
-                      <div className={`font-medium text-white ${participation.tournament.isDeleted ? 'line-through' : ''}`}>
+                      <div
+                        className={`font-medium text-white ${participation.tournament.isDeleted ? "line-through" : ""}`}
+                      >
                         {participation.tournament.name}
                       </div>
                       <div className="text-xs text-gray-400">

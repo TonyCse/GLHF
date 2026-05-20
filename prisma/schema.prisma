@@ -1,3 +1,20 @@
+model Report {
+  id            Int      @id @default(autoincrement())
+  participantId Int
+  motif         String
+  details       String?
+  tournoiId     Int
+  reporterId    Int
+  date          DateTime @default(now())
+
+  participant   User     @relation("ReportedUser", fields: [participantId], references: [id], onDelete: Cascade)
+  reporter      User     @relation("ReporterUser", fields: [reporterId], references: [id], onDelete: Cascade)
+  tournament    Tournament @relation(fields: [tournoiId], references: [id], onDelete: Cascade)
+
+  @@index([participantId])
+  @@index([reporterId])
+  @@index([tournoiId])
+}
 generator client {
   provider = "prisma-client-js"
 }
@@ -50,10 +67,13 @@ model Tournament {
   createdById  Int
   winnerId     Int?
   isDeleted    Boolean  @default(false)
+  createdAt    DateTime @default(now())
   matches      Match[]  @relation("TournamentMatches")
   createdBy    User     @relation("CreatedTournaments", fields: [createdById], references: [id], onDelete: Cascade)
   winner       User?    @relation("TournamentWinner", fields: [winnerId], references: [id])
   participants TournamentParticipant[]
+
+  reports      Report[]
 
   @@index([createdById])
   @@index([winnerId])
@@ -65,6 +85,11 @@ model User {
   email              String       @unique
   password           String
   avatarUrl          String       @default("")
+  emailVerifiedAt    DateTime?
+  emailVerificationTokenHash String? @unique
+  emailVerificationTokenExpiresAt DateTime?
+  passwordResetTokenHash String? @unique
+  passwordResetTokenExpiresAt DateTime?
   createdAt          DateTime     @default(now())
   tournamentsWon     Int          @default(0)
   matchesWon         Int          @default(0)
@@ -83,6 +108,27 @@ model User {
   createdTournaments Tournament[] @relation("CreatedTournaments")
   tournamentsVictory Tournament[] @relation("TournamentWinner")
   tournamentParticipations TournamentParticipant[]
+  contactRequests     ContactRequest[]
+
+  reportsReceived    Report[]     @relation("ReportedUser")
+  reportsSent        Report[]     @relation("ReporterUser")
+}
+
+model ContactRequest {
+  id        Int            @id @default(autoincrement())
+  userId    Int
+  message   String         @db.Text
+  status    ContactStatus  @default(EN_COURS)
+  createdAt DateTime       @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+enum ContactStatus {
+  EN_COURS
+  TRAITE
 }
 
 model Plan {

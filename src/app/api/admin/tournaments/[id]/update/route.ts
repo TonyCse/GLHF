@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+import { Game } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// Function qui permet de mettre a jour un tournoi.
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   const resolvedParams = await Promise.resolve(params as unknown as { id?: string });
   const idFromParams = resolvedParams?.id;
@@ -13,52 +14,63 @@ export async function PUT(
   const id = idFromParams ?? idFromPath;
 
   if (!session || !["ADMIN", "SUPER_ADMIN"].includes(session.user.role)) {
-    return NextResponse.json({ error: "Non autorise" }, { status: 403 });
+    return NextResponse.json({ error: "Non autorisé" }, { status: 403 });
   }
 
-  const tournamentId = Number(id);
-  if (!Number.isFinite(tournamentId)) {
+  const idSchema = z.coerce.number().int().positive();
+  const parsedId = idSchema.safeParse(id);
+  if (!parsedId.success) {
     return NextResponse.json({ error: "ID invalide" }, { status: 400 });
   }
+  const tournamentId = parsedId.data;
 
   try {
-    const body = await request.json();
-    const { name, description, game, maxPlayers, date } = body;
-
-    // Validation
-    if (!name || !game || maxPlayers === undefined || maxPlayers === null || !date) {
+    const schema = z.object({
+      name: z.string().min(1),
+      description: z.string().optional().nullable(),
+      game: z.nativeEnum(Game),
+      maxPlayers: z.coerce.number().int().min(2).max(64),
+      date: z.string().min(1),
+    });
+    const parsed = schema.safeParse(await request.json());
+    if (!parsed.success) {
       return NextResponse.json({ error: "Champs requis manquants" }, { status: 400 });
     }
+    const { name, description, game, maxPlayers, date } = parsed.data;
+    const maxPlayersNum = maxPlayers;
 
-    const maxPlayersNum = parseInt(maxPlayers.toString(), 10);
-    if (isNaN(maxPlayersNum) || maxPlayersNum < 2 || maxPlayersNum > 64) {
-      return NextResponse.json({ error: "Le nombre de joueurs doit être entre 2 et 64" }, { status: 400 });
+    // Valider la date
+    const tournamentDate = new Date(date);
+    if (isNaN(tournamentDate.getTime())) {
+      return NextResponse.json({ error: "Date invalide" }, { status: 400 });
     }
 
-    // Vérifier que le tournoi existe
+    // Verifier que le tournoi existe
     const existingTournament = await prisma.tournament.findUnique({
-      where: { id: tournamentId },
+      where: { id: tournamentId, isDeleted: false },
       include: {
         participants: {
-          where: { isActive: true }
-        }
-      }
+          where: { isActive: true },
+        },
+      },
     });
 
     if (!existingTournament) {
       return NextResponse.json({ error: "Tournoi introuvable" }, { status: 404 });
     }
 
-    // Vérifier que le nouveau maxPlayers n'est pas inférieur au nombre de participants actuels
+    // Verifier que le nouveau maxPlayers n'est pas inferieur au nombre de participants actuels
     const currentParticipants = existingTournament.participants.length;
     if (maxPlayersNum < currentParticipants) {
       return NextResponse.json(
-        { error: `Impossible de réduire la capacité en dessous du nombre de participants actuels (${currentParticipants})` },
-        { status: 400 }
+        {
+          error: `Impossible de réduire la capacité en dessous du nombre de participants actuels (${currentParticipants})`,
+        },
+        { status: 400 },
       );
     }
 
-    // Mettre à jour le tournoi
+    // Mettre a jour le tournoi
     const updatedTournament = await prisma.tournament.update({
       where: { id: tournamentId },
       data: {
@@ -66,7 +78,7 @@ export async function PUT(
         description: description || null,
         game,
         maxPlayers: maxPlayersNum,
-        date: new Date(date),
+        date: tournamentDate,
       },
     });
 
@@ -74,8 +86,8 @@ export async function PUT(
       message: "Tournoi mis à jour avec succès",
       tournament: updatedTournament,
     });
-  } catch (error) {
-    console.error("Erreur lors de la mise à jour du tournoi:", error);
+  } catch (err: unknown) {
+    logger.error("admin_tournament_update_erreur", { message: err instanceof Error ? err.message : String(err) });
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });
   }
 }
